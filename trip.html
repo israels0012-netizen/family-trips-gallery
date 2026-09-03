@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>טיול · סוסובר</title>
+  <meta name="description" content="גלריית התמונות והסיפור של הטיול — סוסובר, אלבום המסעות המשפחתי.">
+  <meta name="theme-color" content="#0a1428">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230a1428'/%3E%3Ccircle cx='16' cy='16' r='10' fill='none' stroke='%23c8a44d' stroke-width='1.5'/%3E%3Cpath d='M6 16h20M16 6c4 4 4 16 0 20M16 6c-4 4-4 16 0 20' fill='none' stroke='%23c8a44d' stroke-width='1'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@200;300;400;600;700&family=Frank+Ruhl+Libre:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+  <a class="skip-link" href="#gallery">דלגו לגלריית התמונות</a>
+
+  <header class="site-header" id="siteHeader">
+    <div class="wrap">
+      <a class="brand" href="index.html" aria-label="סוסובר — לעמוד הבית">
+        <span class="brand-mark" aria-hidden="true">ס</span>
+        <span class="brand-text">
+          <span class="brand-name">סוסובר</span>
+          <span class="brand-tag">מסביב לעולם ביום אחד</span>
+        </span>
+      </a>
+
+      <button class="nav-toggle" id="navToggle" aria-expanded="false" aria-controls="mainNav" aria-label="תפריט">
+        <span></span><span></span><span></span>
+      </button>
+
+      <nav class="nav" id="mainNav" aria-label="ניווט ראשי">
+        <a href="index.html">בית</a>
+        <a href="index.html#trips" class="is-active">הטיולים</a>
+        <a href="index.html#timeline">ציר זמן</a>
+        <a href="index.html#about">עלינו</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="tripRoot" hidden>
+    <!-- ================= Hero של הטיול ================= -->
+    <section class="trip-hero">
+      <div class="trip-hero-img" id="tripHeroImg" aria-hidden="true"></div>
+      <div class="wrap">
+        <a class="back-link" href="index.html#trips">
+          <span aria-hidden="true">→</span> חזרה לכל הטיולים
+        </a>
+        <p class="eyebrow" id="tripEyebrow"></p>
+        <h1 id="tripTitle"></h1>
+        <p class="lead" id="tripSummary"></p>
+
+        <dl class="trip-meta" id="tripMeta"></dl>
+      </div>
+    </section>
+
+    <!-- ================= הסיפור ================= -->
+    <section class="section">
+      <div class="wrap">
+        <div class="trip-story reveal">
+          <p class="eyebrow is-centered">הסיפור</p>
+          <span class="quote-mark" aria-hidden="true">”</span>
+          <p id="tripStory"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= הגלריה ================= -->
+    <section class="section" id="gallery">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <div>
+            <p class="eyebrow">הגלריה</p>
+            <h2>תמונות מהטיול</h2>
+            <p>לחצו על תמונה כדי לפתוח אותה במסך מלא. ניתן לנווט בחיצי המקלדת או בהחלקה.</p>
+          </div>
+          <button class="btn btn-ghost" id="playAll" type="button"><span>צפייה במסך מלא</span></button>
+        </div>
+        <div class="mosaic" id="mosaic"></div>
+      </div>
+    </section>
+
+    <!-- ================= ניווט בין טיולים ================= -->
+    <section class="section">
+      <div class="wrap">
+        <div class="trip-nav" id="tripNav"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ================= הודעת שגיאה ================= -->
+  <section class="section" id="notFound" hidden style="padding-top:calc(var(--header-h) + 80px)">
+    <div class="wrap">
+      <div class="empty">
+        <b>הטיול לא נמצא</b>
+        ייתכן שהקישור שגוי או שהטיול הוסר.
+        <div style="margin-top:24px"><a class="btn" href="index.html"><span>חזרה לעמוד הבית</span></a></div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">ס</span>
+        <span class="brand-text">
+          <span class="brand-name">סוסובר</span>
+          <span class="brand-tag">מסביב לעולם ביום אחד</span>
+        </span>
+      </div>
+      <div class="footer-links">
+        <a href="index.html#trips">הטיולים</a>
+        <a href="index.html#timeline">ציר זמן</a>
+        <a href="index.html#about">עלינו</a>
+      </div>
+      <p class="footer-note">© <span id="year"></span> סוסובר · אלבום המסעות המשפחתי</p>
+    </div>
+  </footer>
+
+  <!-- ================= לייטבוקס ================= -->
+  <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="תצוגת תמונה במסך מלא">
+    <div class="lb-bar is-top">
+      <span class="lb-title" id="lbTitle"></span>
+      <span class="lb-count" id="lbCount"></span>
+      <button class="lb-btn" id="lbClose" type="button" aria-label="סגירה">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+
+    <button class="lb-btn lb-nav lb-prev" id="lbPrev" type="button" aria-label="התמונה הקודמת">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+    </button>
+
+    <div class="lb-stage" id="lbStage"></div>
+
+    <button class="lb-btn lb-nav lb-next" id="lbNext" type="button" aria-label="התמונה הבאה">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+
+    <div class="lb-bar is-bottom">
+      <span class="lb-caption" id="lbCaption"></span>
+    </div>
+  </div>
+
+  <script src="assets/js/data.js"></script>
+  <script src="assets/js/app.js"></script>
+  <script src="assets/js/lightbox.js"></script>
+  <script src="assets/js/trip.js"></script>
+</body>
+</html>

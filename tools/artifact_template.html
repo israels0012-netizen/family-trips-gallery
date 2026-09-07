@@ -1,0 +1,197 @@
+<title>סוסובר</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@200;300;400;600;700&family=Frank+Ruhl+Libre:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+/*{{CSS}}*/
+</style>
+
+<div dir="rtl" lang="he" id="app">
+  <a class="skip-link" href="#trips">דלגו לרשימת הטיולים</a>
+
+  <header class="site-header" id="siteHeader">
+    <div class="wrap">
+      <a class="brand" href="#top" aria-label="סוסובר — לעמוד הבית">
+        <span class="brand-mark" aria-hidden="true">ס</span>
+        <span class="brand-text">
+          <span class="brand-name">סוסובר</span>
+          <span class="brand-tag">מסביב לעולם ביום אחד</span>
+        </span>
+      </a>
+
+      <button class="nav-toggle" id="navToggle" aria-expanded="false" aria-controls="mainNav" aria-label="תפריט">
+        <span></span><span></span><span></span>
+      </button>
+
+      <nav class="nav" id="mainNav" aria-label="ניווט ראשי">
+        <a href="#top">בית</a>
+        <a href="#trips">הטיולים</a>
+        <a href="#timeline">ציר זמן</a>
+        <a href="#about">עלינו</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- ===================== עמוד הבית ===================== -->
+  <main id="viewHome">
+    <section class="hero" id="top">
+      <div class="hero-bg" id="heroBg" aria-hidden="true"></div>
+      <div class="hero-inner">
+        <p class="hero-kicker">אלבום המסעות המשפחתי</p>
+        <h1>סוסו<em>בר</em></h1>
+        <div class="hero-rule" aria-hidden="true"></div>
+        <p class="hero-sub">מסביב לעולם ביום אחד</p>
+        <p class="hero-note" id="heroNote"></p>
+        <div class="hero-actions">
+          <a class="btn" href="#trips"><span>לגלריית הטיולים</span></a>
+          <a class="btn btn-ghost" href="#timeline"><span>ציר הזמן שלנו</span></a>
+        </div>
+      </div>
+      <div class="scroll-cue" aria-hidden="true"><span>גלול</span><i></i></div>
+    </section>
+
+    <section class="stats" id="stats" aria-label="נתונים כלליים">
+      <div class="stat"><b id="statTrips">0</b><span>טיולים</span></div>
+      <div class="stat"><b id="statCountries">0</b><span>מדינות</span></div>
+      <div class="stat"><b id="statPhotos">0</b><span>תמונות</span></div>
+      <div class="stat"><b id="statYears">0</b><span>שנות מסעות</span></div>
+    </section>
+
+    <section class="section" id="trips">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <div>
+            <p class="eyebrow">האוסף</p>
+            <h2>הטיולים המשותפים שלנו</h2>
+            <p>בחרו טיול כדי להיכנס לגלריית התמונות המלאה ולסיפור שמאחוריו.</p>
+          </div>
+        </div>
+
+        <div class="filters reveal">
+          <div class="chips" id="filterChips" role="group" aria-label="סינון טיולים"></div>
+          <div class="search">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            <input type="search" id="searchInput" placeholder="חיפוש יעד, מדינה או שנה…" aria-label="חיפוש טיולים">
+          </div>
+        </div>
+
+        <div class="trip-grid" id="tripGrid"></div>
+        <div class="empty" id="emptyState" hidden>
+          <b>לא נמצאו טיולים</b>
+          נסו לחפש יעד אחר או לאפס את הסינון.
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="timeline">
+      <div class="wrap">
+        <div class="section-head reveal" style="justify-content:center;text-align:center">
+          <div>
+            <p class="eyebrow is-centered">כרונולוגיה</p>
+            <h2>ציר הזמן של המסעות</h2>
+            <p style="margin-inline:auto">כל הטיולים שלנו, לפי הסדר שבו קרו.</p>
+          </div>
+        </div>
+        <div class="timeline" id="timelineList"></div>
+      </div>
+    </section>
+
+    <section class="section" id="about">
+      <div class="wrap">
+        <div class="trip-story reveal">
+          <p class="eyebrow is-centered">עלינו</p>
+          <h2 style="font-size:clamp(30px,4.4vw,50px);margin-top:16px">האוסף הזה נבנה מזיכרונות</h2>
+          <span class="quote-mark" aria-hidden="true">”</span>
+          <p>התחלנו לצלם כדי לזכור, והמשכנו כדי לספר. כל טיול כאן הוא ימים שלמים של דרכים חדשות,
+             ארוחות ארוכות ושיחות שלא היו קורות בשום מקום אחר. האתר הזה הוא הדרך שלנו לשמור
+             את כל זה במקום אחד — כדי שנוכל לחזור לשם מתי שנרצה.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===================== עמוד טיול ===================== -->
+  <main id="viewTrip" hidden>
+    <section class="trip-hero">
+      <div class="trip-hero-img" id="tripHeroImg" aria-hidden="true"></div>
+      <div class="wrap">
+        <a class="back-link" href="#trips"><span aria-hidden="true">→</span> חזרה לכל הטיולים</a>
+        <p class="eyebrow" id="tripEyebrow"></p>
+        <h1 id="tripTitle"></h1>
+        <p class="lead" id="tripSummary"></p>
+        <dl class="trip-meta" id="tripMeta"></dl>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <div class="trip-story reveal">
+          <p class="eyebrow is-centered">הסיפור</p>
+          <span class="quote-mark" aria-hidden="true">”</span>
+          <p id="tripStory"></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="gallery">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <div>
+            <p class="eyebrow">הגלריה</p>
+            <h2>תמונות מהטיול</h2>
+            <p>לחצו על תמונה כדי לפתוח אותה במסך מלא. ניתן לנווט בחיצי המקלדת או בהחלקה.</p>
+          </div>
+          <button class="btn btn-ghost" id="playAll" type="button"><span>צפייה במסך מלא</span></button>
+        </div>
+        <div class="mosaic" id="mosaic"></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap"><div class="trip-nav" id="tripNav"></div></div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">ס</span>
+        <span class="brand-text">
+          <span class="brand-name">סוסובר</span>
+          <span class="brand-tag">מסביב לעולם ביום אחד</span>
+        </span>
+      </div>
+      <div class="footer-links">
+        <a href="#trips">הטיולים</a>
+        <a href="#timeline">ציר זמן</a>
+        <a href="#about">עלינו</a>
+      </div>
+      <p class="footer-note">© <span id="year"></span> סוסובר · אלבום המסעות המשפחתי</p>
+    </div>
+  </footer>
+
+  <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="תצוגת תמונה במסך מלא">
+    <div class="lb-bar is-top">
+      <span class="lb-title" id="lbTitle"></span>
+      <span class="lb-count" id="lbCount"></span>
+      <button class="lb-btn" id="lbClose" type="button" aria-label="סגירה">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <button class="lb-btn lb-nav lb-prev" id="lbPrev" type="button" aria-label="התמונה הקודמת">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+    </button>
+    <div class="lb-stage" id="lbStage"></div>
+    <button class="lb-btn lb-nav lb-next" id="lbNext" type="button" aria-label="התמונה הבאה">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <div class="lb-bar is-bottom"><span class="lb-caption" id="lbCaption"></span></div>
+  </div>
+</div>
+
+<script>
+/*{{DATA}}*/
+</script>
+<script>
+/*{{APP}}*/
+</script>

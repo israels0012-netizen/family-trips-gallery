@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0d14">
+<title>VR Player — נגן סרטונים למשקפי VR</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🥽</text></svg>">
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three.module.min.js"
+  }
+}
+</script>
+</head>
+<body>
+
+<canvas id="stage"></canvas>
+
+<!-- ======================= מסך פתיחה / טעינת מקור ======================= -->
+<div id="dropzone" class="overlay">
+  <div class="panel">
+    <h1><span class="goggles">🥽</span> VR Player</h1>
+    <p class="sub">כל סרטון שתעלו וכל קישור שתדביקו — מותאם אוטומטית למשקפי VR</p>
+
+    <label class="bigdrop" id="bigdrop">
+      <input type="file" id="filePicker" accept="video/*" multiple hidden>
+      <div class="bigdrop-inner">
+        <div class="bigdrop-icon">⬆</div>
+        <div class="bigdrop-title">גררו לכאן סרטון או לחצו לבחירה</div>
+        <div class="bigdrop-note">MP4 · WebM · MOV · M4V — הכל נשאר במכשיר שלכם</div>
+      </div>
+    </label>
+
+    <div class="or"><span>או</span></div>
+
+    <form class="urlrow" id="urlForm">
+      <input type="url" id="urlInput" placeholder="הדביקו כאן קישור לסרטון (‎.mp4 / ‎.m3u8 / ‎.webm)" autocomplete="off" spellcheck="false">
+      <button type="submit" class="btn primary">טען</button>
+    </form>
+    <div class="hint">טיפ: אפשר פשוט ללחוץ <kbd>Ctrl</kbd>+<kbd>V</kbd> בכל מקום בדף כדי להדביק קישור.</div>
+
+    <div id="recents" class="recents" hidden>
+      <div class="recents-title">נטענו לאחרונה</div>
+      <div id="recentsList" class="recents-list"></div>
+    </div>
+
+    <div id="loadMsg" class="loadmsg" hidden></div>
+
+    <details class="help">
+      <summary>איך צופים במשקפיים?</summary>
+      <ol>
+        <li><b>Quest / Pico / Vive:</b> פתחו את הכתובת של הדף בדפדפן של המשקפיים, טענו סרטון ולחצו «כניסה ל‑VR».</li>
+        <li><b>טלפון + מסגרת קרדבורד:</b> טענו סרטון והפעילו «מצב קרדבורד» — המסך יתפצל לשתי עיניים והתמונה תעקוב אחרי תנועת הראש.</li>
+        <li><b>מחשב:</b> משמש לתצוגה מקדימה ולכיוונון. גררו עם העכבר כדי להסתכל מסביב.</li>
+      </ol>
+    </details>
+  </div>
+</div>
+
+<!-- ======================= סרגל שליטה (מחוץ ל-VR) ======================= -->
+<div id="ui" class="ui" hidden>
+  <div class="topbar">
+    <button class="btn ghost" id="btnBack" title="טעינת סרטון אחר">← מקור חדש</button>
+    <div class="title" id="mediaTitle">—</div>
+    <div class="spacer"></div>
+    <div class="badge" id="autoBadge" title="זוהה אוטומטית">זיהוי אוטומטי</div>
+    <button class="btn ghost" id="btnSettings" title="הגדרות תצוגה">⚙ התאמה</button>
+  </div>
+
+  <div class="bottombar">
+    <div class="seek">
+      <input type="range" id="seek" min="0" max="1000" value="0" step="1">
+      <div class="times"><span id="tCur">0:00</span><span id="tDur">0:00</span></div>
+    </div>
+    <div class="controls">
+      <button class="btn" id="btnBack10" title="אחורה 10 שניות">⏪ 10</button>
+      <button class="btn play" id="btnPlay" title="נגן / השהה">▶</button>
+      <button class="btn" id="btnFwd10" title="קדימה 10 שניות">10 ⏩</button>
+      <div class="vol">
+        <button class="btn ghost" id="btnMute" title="השתקה">🔊</button>
+        <input type="range" id="volume" min="0" max="100" value="100">
+      </div>
+      <div class="spacer"></div>
+      <button class="btn ghost" id="btnRecenter" title="מרכוז התמונה מחדש">⌖ מרכוז</button>
+      <button class="btn ghost" id="btnCardboard" title="פיצול מסך לשתי עיניים עבור מסגרת לטלפון">📱 קרדבורד</button>
+      <button class="btn accent" id="btnVR" disabled>כניסה ל‑VR</button>
+    </div>
+  </div>
+
+  <!-- ======================= חלונית התאמה ======================= -->
+  <aside id="settings" class="settings" hidden>
+    <div class="settings-head">
+      <b>התאמה למשקפיים</b>
+      <button class="btn ghost icon" id="btnCloseSettings">✕</button>
+    </div>
+
+    <div class="detected" id="detected"></div>
+
+    <div class="field">
+      <label>סוג ההקרנה</label>
+      <div class="segmented" id="segProjection">
+        <button data-v="flat">מסך שטוח</button>
+        <button data-v="180">180°</button>
+        <button data-v="360">360°</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>פריסת תלת־ממד</label>
+      <div class="segmented" id="segLayout">
+        <button data-v="mono">רגיל (2D)</button>
+        <button data-v="sbs">זה לצד זה</button>
+        <button data-v="tb">אחד מעל השני</button>
+      </div>
+    </div>
+
+    <label class="checkrow"><input type="checkbox" id="chkSwap"> החלפה בין עין ימין לשמאל</label>
+
+    <div class="field" id="flatOnly">
+      <label>גודל המסך <span class="val" id="valSize"></span></label>
+      <input type="range" id="rngSize" min="50" max="400" value="130">
+      <label>מרחק <span class="val" id="valDist"></span></label>
+      <input type="range" id="rngDist" min="15" max="120" value="45">
+      <label>קימור המסך <span class="val" id="valCurve"></span></label>
+      <input type="range" id="rngCurve" min="0" max="100" value="45">
+    </div>
+
+    <div class="field">
+      <label>סיבוב אופקי <span class="val" id="valYaw"></span></label>
+      <input type="range" id="rngYaw" min="-180" max="180" value="0">
+    </div>
+
+    <button class="btn wide" id="btnReset">איפוס לזיהוי האוטומטי</button>
+    <p class="tinynote">ההגדרות נשמרות לכל סרטון בנפרד — בפעם הבאה שתטענו אותו הן יחזרו אוטומטית.</p>
+  </aside>
+</div>
+
+<video id="video" playsinline webkit-playsinline crossorigin="anonymous" style="display:none"></video>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

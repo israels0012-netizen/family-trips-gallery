@@ -1,6 +1,6 @@
 import { Viewer } from './viewer.js';
 import { detect, describe } from './detect.js';
-import { attach, classify, unsupportedReason } from './media.js';
+import { attach, classify, unsupportedReason, pageNotFileReason } from './media.js';
 import { formatTime } from './hud.js';
 
 const $ = (id) => document.getElementById(id);
@@ -98,11 +98,9 @@ async function load(source) {
   try {
     await attach(video, source);
   } catch (err) {
-    if (err.tainted) {
-      return message(
-        '<b>השרת חוסם שימוש בסרטון מאתר אחר</b>' +
-        'הקובץ קיים, אבל השרת לא שולח כותרת CORS ולכן הדפדפן לא מרשה להקרין אותו בתלת־ממד. ' +
-        'הורידו את הקובץ למכשיר וגררו אותו לכאן.', 'err');
+    if (source.type === 'url') {
+      const reason = pageNotFileReason(source.url);
+      return message(`<b>${reason.title}</b>${reason.body}`, 'err');
     }
     return message(`<b>לא הצלחנו לטעון</b>${err.message}`, 'err');
   }

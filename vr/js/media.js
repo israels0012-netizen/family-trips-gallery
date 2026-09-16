@@ -53,6 +53,27 @@ export function unsupportedReason(kind, host) {
   }
 }
 
+/**
+ * Shown after a link that looked plausible turned out not to be a video.
+ * Nearly always this is a page address rather than the file itself, so say
+ * that in words instead of leaving "unsupported format" hanging.
+ */
+export function pageNotFileReason(url) {
+  const looksLikeFile = DIRECT_EXT.test(new URL(url, location.href).pathname);
+  return looksLikeFile
+    ? {
+        title: 'הקובץ קיים, אבל השרת לא מרשה להשתמש בו כאן',
+        body: 'כדי להציג סרטון בתלת־ממד הדפדפן דורש אישור מפורש מהשרת שמאחסן אותו, ' +
+              'ורוב השרתים לא נותנים אותו. הורידו את הסרטון למכשיר וגררו אותו לכאן — ככה זה תמיד יעבוד.',
+      }
+    : {
+        title: 'הקישור הזה מוביל לעמוד אינטרנט, לא לקובץ וידאו',
+        body: 'צריך קישור לקובץ עצמו — כזה שנגמר ב‑.mp4 או ב‑.webm. כתובת של עמוד ' +
+              '(יוטיוב, פייסבוק, אתר חדשות, כל אתר) לא מכילה את הסרטון, אלא רק נגן שמוגן ' +
+              'מפני אתרים אחרים. הדרך שתמיד עובדת: מורידים את הסרטון למכשיר וגוררים אותו לכאן.',
+      };
+}
+
 let hlsPromise = null;
 function loadHlsLibrary() {
   if (hlsPromise) return hlsPromise;

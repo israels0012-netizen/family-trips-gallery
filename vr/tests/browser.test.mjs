@@ -24,7 +24,12 @@ const browser = await chromium.launch({
 });
 const page = await browser.newPage({ viewport: { width: 900, height: 600 } });
 const consoleErrors = [];
-page.on('console', (m) => m.type() === 'error' && consoleErrors.push(m.text()));
+// The unplayable-link checks deliberately point at hosts that cannot resolve,
+// so the browser's own network failures are not app errors.
+const NETWORK_NOISE = /net::ERR_|Failed to load resource/;
+page.on('console', (m) => {
+  if (m.type() === 'error' && !NETWORK_NOISE.test(m.text())) consoleErrors.push(m.text());
+});
 page.on('pageerror', (e) => consoleErrors.push('pageerror: ' + e.message));
 
 await page.goto(`http://127.0.0.1:${PORT}/index.html`);
@@ -151,8 +156,16 @@ await page.click('#btnBack');
 await page.fill('#urlInput', 'https://www.youtube.com/watch?v=abc123');
 await page.click('#urlForm button[type=submit]');
 await page.waitForTimeout(400);
-const msg = await page.textContent('#loadMsg');
+let msg = await page.textContent('#loadMsg');
 check('a YouTube link gets a real explanation', /YouTube/.test(msg) && !/undefined/.test(msg));
+
+// The commonest mistake by far: pasting the address of a page, not a file.
+await page.fill('#urlInput', 'https://example.com/watch/some-clip');
+await page.click('#urlForm button[type=submit]');
+await page.waitForFunction(() => /עמוד אינטרנט|לא מרשה/.test(document.getElementById('loadMsg').textContent), null, { timeout: 40000 });
+msg = await page.textContent('#loadMsg');
+check('a page address is explained as a page, not "unsupported"',
+  /עמוד אינטרנט/.test(msg) && /\.mp4/.test(msg), msg.slice(0, 46) + '…');
 
 // --- the in-headset panel ---------------------------------------------------
 const hud = await page.evaluate(() => {

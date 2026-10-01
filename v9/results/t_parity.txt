@@ -1,0 +1,7 @@
+B01/B18 drill parity cases 2376 mismatches 0 []
+drill export lines 9 gallery 9 header ['תיאור חשבון', 'קוד חשבון', '31.12.2025', '31.12.2024', 'הפרש', 'שינוי %', 'מטבע', 'מקור'] cols {8}
+A01 drivers gross match 
+A01 drivers operating match 
+A01 drivers net match 
+unhandled []
+exit 0

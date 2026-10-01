@@ -9,7 +9,7 @@ ClearCollect(colV97Urls,Table({DocId:"",Url:""}));Clear(colV97Urls);
 ClearCollect(colV97Docs,Table({DocId:"",Name:"",Url:"",At:""}));Clear(colV97Docs);
 ClearCollect(colV97History,Table({Id:"",Key:"",Action:"",At:"",User:""}));Clear(colV97History);
 ClearCollect(colV97StageEntries,colV97Entries);ClearCollect(colV97StageNotes,colV97Notes);ClearCollect(colV97StageReviews,colV97Reviews);ClearCollect(colV97StageLinks,colV97Links);ClearCollect(colV97StageUrls,colV97Urls);ClearCollect(colV97StageDocs,colV97Docs);ClearCollect(colV97StageHistory,colV97History);
-ClearCollect(colV97ConvReviews,colV97Reviews);
+ClearCollect(colV97ConvReviews,Table({Key:"",Status:"",Note:"",At:"",Orig:"",OrigStatus:""}));Clear(colV97ConvReviews);
 ClearCollect(colV97StageErrors,Table({Msg:""}));Clear(colV97StageErrors);
 ClearCollect(colV97Batch,Table({Entity:"",Key:"",Deleted:false,Payload:""}));Clear(colV97Batch);
 ClearCollect(colV97Merge,Table({Entity:"",Key:"",EventId:0,Deleted:false,Payload:""}));Clear(colV97Merge);

@@ -40,7 +40,7 @@ Set(varV97LoadWarn,"");
 Set(varV97SaveMessage,"טוען מצב משותף מ-SharePoint...");
 IfError(
   Refresh(DashboardPOC_Data);
-  Set(varV97SnapHead,First(SortByColumns(Filter(DashboardPOC_Data,%P% && field_3="V97Snapshot9"),"field_11",SortOrder.Descending,"field_10",SortOrder.Descending,"ID",SortOrder.Descending)));
+  Set(varV97SnapHead,First(SortByColumns(Filter(DashboardPOC_Data,%P% && field_3="V97Snapshot9"),"field_11",SortOrder.Descending,"field_10",SortOrder.Descending)));
   Set(varV97Legacy,IsBlank(varV97SnapHead.ID));
   true,
   Set(varV97LoadOk,false);Set(varV97SaveMessage,"טעינת המצב המשותף נכשלה: "&FirstError.Message);false
@@ -98,7 +98,9 @@ If(varV97LoadOk && varV97Legacy,IfError(
   ClearCollect(colV97Snap8,ForAll(Filter(DashboardPOC_Data,%P% && field_3="V97Snapshot8") As s,With({j:IfError(ParseJSON(s.AuditNote),ParseJSON("{}"))},{ID:s.ID,Title:s.Title,AuditNote:s.AuditNote,Through:IfError(Value(j.ThroughEventId),-1),Ok:IfError(Text(j.Dataset)=varV97Dataset && (Value(j.Version) in [1,2]),false)})));
   If(CountRows(colV97Snap8)>=500,Error({Kind:ErrorKind.Custom,Message:"יותר מ-500 נקודות שחזור של v8; נדרשת הגדלת מגבלת השורות לפני מיגרציה"}));
   Set(varV97Snap8,First(SortByColumns(AddColumns(Filter(colV97Snap8,Ok && Through>=0) As s,Prio,s.Through*10+If(StartsWith(s.Title,"V97-SNAPSHOT8-RESTORE-"),5,0)),"Prio",SortOrder.Descending,"ID",SortOrder.Descending)));
-  Set(varV97Snap7,If(IsBlank(varV97Snap8.ID),First(Filter(SortByColumns(Filter(DashboardPOC_Data,%P% && field_3="V97Snapshot7"),"ID",SortOrder.Descending) As s,IfError(Text(ParseJSON(s.AuditNote).Dataset)=varV97Dataset,false))),Blank()));
+  ClearCollect(colV97Snap7,ShowColumns(Filter(DashboardPOC_Data,%P% && field_3="V97Snapshot7"),ID,AuditNote));
+  If(CountRows(colV97Snap7)>=500,Error({Kind:ErrorKind.Custom,Message:"יותר מ-500 נקודות שחזור של v7; נדרשת מיגרציה מבוקרת"}));
+  Set(varV97Snap7,If(IsBlank(varV97Snap8.ID),First(SortByColumns(Filter(colV97Snap7 As s,IfError(Text(ParseJSON(s.AuditNote).Dataset)=varV97Dataset,false)),"ID",SortOrder.Descending)),Blank()));
   Set(varV97LegacyThrough,If(!IsBlank(varV97Snap8.ID),varV97Snap8.Through,If(!IsBlank(varV97Snap7.ID),Coalesce(IfError(Value(ParseJSON(varV97Snap7.AuditNote).ThroughEventId),Blank()),varV97Snap7.ID),0)));
   If(IsBlank(varV97Snap8.ID) && IsBlank(varV97Snap7.ID),
     ClearCollect(colV97LegacyEntries,Filter(DashboardPOC_Data,field_1=varV97CompanyID && field_2=varV97PeriodID && field_3="V97ManualEntry"));
@@ -134,7 +136,7 @@ If(varV97LoadOk && varV97Legacy,IfError(
 ));
 If(varV97LoadOk,
   Select(V97Materialize),
-  Set(varV97Syncing,false);Set(varV97Starting,false);If(!varV97RemoteReady,Set(varV97RemoteReady,false));Notify(varV97SaveMessage,NotificationType.Error)
+  Set(varV97Syncing,false);Set(varV97Starting,false);Set(varV97RemoteReady,false);Set(varV97SaveMessage,varV97SaveMessage&" · השמירה מושבתת עד רענון תקין");Notify(varV97SaveMessage,NotificationType.Error)
 )''').replace('%PAGES%', '\n  '.join([sub(EVENT_PAGE)] * PAGES)).replace('%ENTITIES%', ENTITY_LIST).replace('%PKEY%', pkey('ent', 'p'))
 
 # ---------------------------------------------------------------------------
@@ -162,8 +164,9 @@ If(varV97LoadOk,
 # Converts v7/v8 (Version 1/2) stage content to v9 semantics.
 CONVERT_STAGE = r'''=IfError(
   ClearCollect(colV97StageLinks,ForAll(colV97StageLinks As l,With({tk:If(IsBlank(l.TargetKey),If(IsBlank(Trim(l.Account)),"general:"&l.Section&":","drill:"&l.Section&":"&Trim(l.Account)),l.TargetKey)},{Key:tk&"|"&l.DocId,TargetKey:tk,DocId:l.DocId,Section:l.Section,Account:Trim(l.Account),Name:l.Name})));
-  ClearCollect(colV97ConvReviews,ForAll(colV97StageReviews As r,{Key:If(StartsWith(r.Key,"LINK|"),With({parts:Split(Mid(r.Key,6),"|")},If(CountRows(parts)>=3,If(IsBlank(Trim(Index(parts,3).Value)),"general:"&Index(parts,2).Value&":","drill:"&Index(parts,2).Value&":"&Trim(Index(parts,3).Value)),"")),Coalesce(LookUp(colV97MatchesX,Key=r.Key,TargetKey),If(StartsWith(r.Key,"drill:") || StartsWith(r.Key,"general:"),r.Key,""))),Status:Switch(r.Status,"טופל","handled","דורש בדיקה","needsAction","דורש טיפול","needsAction","handled","handled","needsAction","needsAction",""),Note:r.Note,At:r.At}));
-  ClearCollect(colV97StageReviews,ForAll(Distinct(Filter(colV97ConvReviews,!IsBlank(Key) && !IsBlank(Status)),Key) As g,First(SortByColumns(Filter(colV97ConvReviews,Key=g.Value),"At",SortOrder.Descending))));
+  ClearCollect(colV97ConvReviews,ForAll(colV97StageReviews As r,{Key:If(StartsWith(r.Key,"LINK|"),With({parts:Split(Mid(r.Key,6),"|")},If(CountRows(parts)>=3,If(IsBlank(Trim(Index(parts,3).Value)),"general:"&Index(parts,2).Value&":","drill:"&Index(parts,2).Value&":"&Trim(Index(parts,3).Value)),"")),Coalesce(LookUp(colV97MatchesX,Key=r.Key,TargetKey),If(StartsWith(r.Key,"drill:") || StartsWith(r.Key,"general:"),r.Key,""))),Status:Switch(r.Status,"טופל","handled","דורש בדיקה","needsAction","דורש טיפול","needsAction","handled","handled","needsAction","needsAction",""),Note:r.Note,At:r.At,Orig:r.Key,OrigStatus:r.Status}));
+  ClearCollect(colV97ConvReviews,ForAll(colV97ConvReviews As r,{Key:If(IsBlank(r.Key),"unmapped:"&r.Orig,r.Key),Status:If(IsBlank(r.Status),r.OrigStatus,r.Status),Note:r.Note,At:r.At,Orig:r.Orig,OrigStatus:r.OrigStatus}));
+  ClearCollect(colV97StageReviews,ForAll(Distinct(Filter(colV97ConvReviews,OrigStatus<>"אוטומטי"),Key) As g,First(ShowColumns(SortByColumns(Filter(colV97ConvReviews,Key=g.Value),"At",SortOrder.Descending),Key,Status,Note,At))));
   ClearCollect(colV97StageHistory,Filter(colV97StageHistory,!StartsWith(Id,"EVENT-")));
   Set(varV97StageVersion,9);
   true,

@@ -1,0 +1,15 @@
+v8 start {'ready': True, 'remote': True, 'sync': False, 'msg': 'מסונכרן עם הצוות · 20:00', 'gen': None, 'through': None}
+v8 state {'ready': True, 'remote': True, 'sync': False, 'msg': 'מסונכרן עם הצוות · 20:00', 'gen': None, 'through': None} 1 1 1 1 1
+v8 unhandled []
+sp types ['V97Event8', 'V97Snapshot8']
+v9 after migration {'ready': True, 'remote': True, 'sync': False, 'msg': 'מסונכרן עם הצוות · 20:00', 'gen': 1.0, 'through': 0.0}
+ entries [('v8 entry', 10.0)]
+ notes [('balance_100', 'v8 note')]
+ reviews [('drill:balance_1220:1960994', 'handled', 'checked')]
+ links ['drill:balance_100:1010004|DOC-002']
+ urls [('DOC-003', 'https://example.org/doc3.pdf')]
+ R07 862.721  v8 R07 862.721
+ snaps [('V97Snapshot9', 0.0, 1.0)]
+import v8 backup {'ready': True, 'remote': True, 'sync': False, 'msg': 'מסונכרן עם הצוות · 20:00', 'gen': 2.0, 'through': 0.0} [('drill:balance_1220:1960994', 'handled')]
+unhandled []
+exit 0

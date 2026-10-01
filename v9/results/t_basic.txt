@@ -1,0 +1,7 @@
+post : {'ok': True, 'entries': 1, 'R07_before': 872.721, 'R07_after': 862.721, 'cash': (2453.526, 2443.526), 'cf_close': 2443.0, 'msg': 'מסונכרן עם הצוות · 20:00'}
+concurrent_diff_keys : [('balance_100', 'A note'), ('balance_110', 'B note')]
+same_key_last_wins : (['B2'], ['B2'])
+note_deleted : ['balance_100']
+materiality_shared : (77.0, 77.0)
+unhandled : []
+exit 0

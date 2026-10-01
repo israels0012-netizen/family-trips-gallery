@@ -345,7 +345,7 @@ If(varV97ImportOk,IfError(
   ClearCollect(colV97StageReviews,ForAll(Table(varV97Incoming.Reviews) As j,{Key:Text(j.Value.Key),Status:Text(j.Value.Status),Note:Text(j.Value.Note),At:Text(j.Value.At)}));
   ClearCollect(colV97StageLinks,ForAll(Table(varV97Incoming.Links) As j,{Key:Text(j.Value.Key),TargetKey:Text(j.Value.TargetKey),DocId:Text(j.Value.DocId),Section:Text(j.Value.Section),Account:Text(j.Value.Account),Name:Text(j.Value.Name)}));
   ClearCollect(colV97StageUrls,ForAll(Table(varV97Incoming.Urls) As j,{DocId:Text(j.Value.DocId),Url:Text(j.Value.Url)}));
-  ClearCollect(colV97StageDocs,If(IsBlank(varV97Incoming.Docs),Filter(colV97StageDocs,false),ForAll(Table(varV97Incoming.Docs) As j,{DocId:Text(j.Value.DocId),Name:Text(j.Value.Name),Url:Text(j.Value.Url),At:Text(j.Value.At)})));
+  Clear(colV97StageDocs);If(!IsBlank(varV97Incoming.Docs),Collect(colV97StageDocs,ForAll(Table(varV97Incoming.Docs) As j,{DocId:Text(j.Value.DocId),Name:Text(j.Value.Name),Url:Text(j.Value.Url),At:Text(j.Value.At)})));
   ClearCollect(colV97StageHistory,ForAll(Table(varV97Incoming.History) As j,{Id:Text(j.Value.Id),Key:Text(j.Value.Key),Action:Text(j.Value.Action),At:Text(j.Value.At),User:Text(j.Value.User)}));
   Set(varV97StageMateriality,Value(varV97Incoming.Materiality));Set(varV97StageMarket,Value(varV97Incoming.Market));
   Set(varV97StageVersion,Value(varV97Incoming.Version));

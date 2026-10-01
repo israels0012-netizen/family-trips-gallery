@@ -131,22 +131,15 @@ setp('V97SideNote', 'Text', '="V97 • Canvas 9"&Char(10)&"גמידה • 2025"&
 setp('V97SettingsText', 'Text', U.SETTINGS_TEXT)
 setp('V97SettingsText', 'Height', '=If(V97Background.Width>=600,100,150)')
 SET_Y = 'If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=600,90,170)+If(V97Background.Width>=600,82,120)+64+If(V97Background.Width>=600,110,160)'
-setp('V97SaveSettings', 'Y', '=' + SET_Y)
-setp('V97RestoreSettings', 'Y', '=' + SET_Y)
 LX = 'If(V97Background.Width>=900,166,12)'
-setp('V97SourceMetadata', 'Y', '=' + SET_Y + '+44')
-setp('V97SourceMetadata', 'Width', '=150')
+GX = lambda i: '=' + LX + '+Mod(%d,If(V97Background.Width-' % i + LX + '-16>=640,4,2))*162'
+GY = lambda i: '=' + SET_Y + '+RoundDown(%d/If(V97Background.Width-' % i + LX + '-16>=640,4,2),0)*44'
 btn_vis = '=varV97Ready && varV97Page="settings"'
-clone('V97RestoreSettings', 'V97AuditLog', {'Text': '="יומן שינויים מלא"', 'X': '=' + LX + '+324', 'Y': '=' + SET_Y + '+If(V97Background.Width>=600,0,44)',
-      'Width': '=150', 'OnSelect': '=Select(V97AuditLogLoad)', 'Visible': btn_vis})
-setp('V97AuditLog', 'X', '=' + LX + '+If(V97Background.Width>=600,324,162)')
-setp('V97AuditLog', 'Y', '=' + SET_Y + '+If(V97Background.Width>=600,0,44)')
-clone('V97RestoreSettings', 'V97SaveHtml', {'Text': '="שמור דשבורד כ-HTML"', 'X': '=' + LX + '+162', 'Y': '=' + SET_Y + '+If(V97Background.Width>=600,44,88)',
-      'Width': '=150', 'OnSelect': '=Select(V97BuildHtml)', 'Visible': btn_vis})
-clone('V97RestoreSettings', 'V97Print', {'Text': '="הדפסה"', 'X': '=' + LX + '+If(V97Background.Width>=600,324,0)', 'Y': '=' + SET_Y + '+If(V97Background.Width>=600,44,88)',
-      'Width': '=150', 'OnSelect': '=IfError(Print(),Notify("ההדפסה אינה זמינה בסביבה זו",NotificationType.Warning))', 'Visible': btn_vis})
-clone('V97RestoreSettings', 'V97ExportAll', {'Text': '="ייצוא כל הדוחות"', 'X': '=' + LX, 'Y': '=' + SET_Y + '+If(V97Background.Width>=600,88,132)',
-      'Width': '=150', 'OnSelect': '=Select(V97BuildExportAll)', 'Visible': btn_vis})
+for nm, txt, f in [('V97AuditLog', '="יומן שינויים מלא"', '=Select(V97AuditLogLoad)'), ('V97SaveHtml', '="שמור דשבורד כ-HTML"', '=Select(V97BuildHtml)'),
+                   ('V97Print', '="הדפסה"', '=IfError(Print(),Notify("ההדפסה אינה זמינה בסביבה זו",NotificationType.Warning))'), ('V97ExportAll', '="ייצוא כל הדוחות"', '=Select(V97BuildExportAll)')]:
+    clone('V97RestoreSettings', nm, {'Text': txt, 'OnSelect': f, 'Visible': btn_vis, 'Width': '=150'})
+for i, nm in enumerate(['V97SaveSettings', 'V97RestoreSettings', 'V97AuditLog', 'V97SaveHtml', 'V97Print', 'V97ExportAll', 'V97SourceMetadata']):
+    setp(nm, 'X', GX(i)); setp(nm, 'Y', GY(i)); setp(nm, 'Width', '=150')
 
 # ------------------------------------------------------------ drill (B01/B18/B19)
 setp('V97Drill', 'Items', U.DRILL_ITEMS)
@@ -174,7 +167,8 @@ setp('V97NotesRow', 'Text', U.NOTES_ROW)
 setp('V97Notes', 'Items', U.NOTES_ITEMS)
 setp('V97NoteApply', 'OnSelect', U.NOTE_APPLY)
 an = getp('V97Analysis', 'Items')
-an2 = an.replace('NoteKey:If(e.Source="manual_entry",e.Section,e.Key)', 'NoteKey:e.Key')
+an2 = an.replace('NoteKey:If(e.Source="manual_entry",e.Section,e.Key)', 'NoteKey:e.Key').replace('As e,Tags,If(Abs(Delta)>=Max(0,IfError(Value(V97Min.Text),0)) && Abs(Percent)>=Max(0,IfError(Value(V97Pct.Text),0)),', 'As e,Tags,If(Abs(e.Delta)>=Max(0,IfError(Value(V97Min.Text),0)) && Abs(e.Percent)>=Max(0,IfError(Value(V97Pct.Text),0)),')
+assert 'Abs(e.Delta)>=Max' in an2
 assert an2 != an
 setp('V97Analysis', 'Items', an2)
 setp('V97Empty', 'Visible', '=varV97Ready && ((varV97Modal in ["exec","exceptions","unchanged"] && IsEmpty(V97Analysis.AllItems)) || (varV97Modal="notes" && IsEmpty(V97Notes.AllItems)) || (varV97Modal="drill" && IsEmpty(V97Drill.AllItems)) || (varV97Modal="evidence" && IsEmpty(V97Evidence.AllItems)))')
@@ -281,6 +275,47 @@ setp('V97ExportView', 'Y', '=If(Parent.Width>=600,32,62)')
 import f_extra as X
 clone('V97Checkpoint', 'V97BuildHtml', {'OnSelect': X.BUILD_HTML}, after='V97AuditLogLoad')
 clone('V97Checkpoint', 'V97BuildExportAll', {'OnSelect': X.BUILD_EXPORT_ALL}, after='V97BuildHtml')
+
+
+def _split_args(s, start):
+    """s[start] is just after '(' ; returns end index of matching ')' and arg boundaries"""
+    depth = 0; i = start; ins = False; commas = []
+    while i < len(s):
+        ch = s[i]
+        if ins:
+            if ch == '"':
+                if i + 1 < len(s) and s[i + 1] == '"': i += 2; continue
+                ins = False
+        elif ch == '"': ins = True
+        elif ch in '([{': depth += 1
+        elif ch in ')]}':
+            if depth == 0: return i, commas
+            depth -= 1
+        elif ch == ',' and depth == 0: commas.append(i)
+        i += 1
+    raise ValueError('unbalanced')
+
+def fix_self_ref(f):
+    out = []; i = 0; changed = 0
+    for m in re.finditer(r'ClearCollect\((col\w+),', f):
+        if m.start() < i: continue
+        name = m.group(1)
+        end, commas = _split_args(f, m.start() + len('ClearCollect('))
+        expr = f[m.end():end]
+        if re.search(r'\b' + name + r'\b', expr):
+            out.append(f[i:m.start()]); out.append('ClearCollect(' + name + 'Tmp,' + expr + ');ClearCollect(' + name + ',' + name + 'Tmp)')
+            i = end + 1; changed += 1
+    out.append(f[i:])
+    return ''.join(out), changed
+
+SELFREF = 0
+for k, body in all_ctrls():
+    p = body.get('Properties', {})
+    for prop, v in list(p.items()):
+        if isinstance(v, str) and 'ClearCollect(' in v and len(v) < 200000:
+            nv, c = fix_self_ref(v)
+            if c: p[prop] = nv; SELFREF += c
+print('self-referencing ClearCollect rewritten:', SELFREF)
 
 out = emit.emit(doc)
 open(OUT, 'w', encoding='utf-8').write(out)

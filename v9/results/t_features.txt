@@ -1,0 +1,34 @@
+export_drill : {'lines': 9, 'col_counts': [1, 8], 'header': 'תיאור חשבון\tקוד חשבון\t31.12.2025\t31.12.2024\tהפרש\tשינוי %\tמטבע\tמקור'}
+export_evidence : {'lines': 38, 'col_counts': [12], 'header': 'סעיף\tתיאור חשבון\tקוד חשבון\t31.12.2025\t31.12.2024\tהפרש\tשינוי %\tמטבע\tסטטוס ראיות\tמ'}
+export_additional : {'lines': 94, 'col_counts': [10], 'header': 'סוג\tסעיף\tפקודה\tחשבון / אסמכתא\t31.12.2025\tצד\tמול מה נרשם\tסיווג תזרים\tתאריך\tסטטוס'}
+export_exceptions : {'lines': 77, 'col_counts': [7], 'header': 'סעיף\tחשבון\tתיאור\t31.12.2025\t31.12.2024\tהפרש\tסוגי חריגה'}
+export_unchanged : {'lines': 15, 'col_counts': [6], 'header': 'סעיף\tחשבון\tתיאור\t31.12.2025\t31.12.2024\tסיבה'}
+export_exec : {'lines': 11, 'col_counts': [6], 'header': 'סעיף\tקוד\t31.12.2025\t31.12.2024\tהפרש\tשינוי %'}
+export_additional_manual_only : 2
+B04_copy_comparisons_rows : 8
+copy_balance_rows : (28, 28)
+B05_targets : 37
+B05_attention : 14
+B05_handled_after_mark : True
+B05_attention_after : 13
+B05_detail_has_history : True
+B05_back_to_auto : (0, 2)
+B05_sort_desc : True
+B07_cards : (16, ['מסמך וסיווג', 'נתונים שחולצו מהמסמך', 'פריט שחולץ · DOC-001-I', 'פריט שחולץ · DOC-001-I', 'פריט שחולץ · DOC-001-I', 'פריט שחולץ · DOC-001-I', 'פריט שחולץ · DOC-001-I', 'פריט שחולץ · DOC-001-I'])
+B07_unmatched_with_reason : 4
+B07_group_checks_doc17 : ['בדיקה קבוצתית · DOC-017-GC-001', 'בדיקה קבוצתית · DOC-017-GC-002', 'בדיקה קבוצתית · DOC-017-GC-003']
+B06_section_link : (True, ['general:balance_810:|DOC-005'])
+B16_ext_doc : (True, [('EXT-', 'אישור בנק')], ['general:balance_810:', 'drill:balance_100:1010004'])
+B16_open : ['https://bank.example/conf.pdf']
+B16_delete_cascade : (0, ['general:balance_810:'])
+B15_html : (True, 7, 29866)
+B15_export_all_lines : 131
+B21_zero_equity : ('—', '—')
+B21_normal : ('430.2%', '0.23x', '1.15x')
+B14_fx : {'all': [3.7, 4.1], 'rev': [3.7, 4.1], 'min_only': [3.7], 'max_only': [4.1]}
+kpi0 : רווח גולמי / 6,911.7 / 5.9% ↗
+row_texts : [('− נכסים שוטפים', '13,475.1', '135.0%'), ('+ מזומנים ושווי מזומנים', '2,448.5', '53.4%'), ('+ לקוחות', '8.8', '340.1%'), ('+ חייבים ויתרות חובה', '2,262.8', '5.9%')]
+footer : שורות בתצוגה: 28
+unhandled : []
+notes_err : []
+exit 0

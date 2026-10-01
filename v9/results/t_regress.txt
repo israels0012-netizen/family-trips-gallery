@@ -1,0 +1,9 @@
+rows IDENTICAL
+cand IDENTICAL
+exec IDENTICAL
+unch IDENTICAL
+charts IDENTICAL
+issues IDENTICAL
+edges IDENTICAL
+entries posted (v9 rows with cf_manual): ['cf_manual_inv', 'cf_manual_fin']
+exit 0

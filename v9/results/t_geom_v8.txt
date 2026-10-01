@@ -1,0 +1,11 @@
+v8_src.txt evaluated 5320 controls with issues 10
+   V97AuditChecks 1 ['390x844 balance/exceptions right']
+   V97Empty 1 ['ERR UNBOUND Delta']
+   V97EvidenceBaseNote 1 ['390x844 balance/evidence negsize']
+   V97Main 25 ['800x600 balance/- bottom', '800x600 balance/additional bottom', '800x600 balance/ai bottom']
+   V97PriceEarnings 1 ['390x844 ratios/- right']
+   V97PriceToBook 1 ['390x844 ratios/- right']
+   V97RestoreSettings 1 ['800x600 settings/- bottom']
+   V97SaveSettings 1 ['800x600 settings/- bottom']
+   V97SettingsText 1 ['800x600 settings/- bottom']
+   V97SourceMetadata 1 ['800x600 settings/- bottom']

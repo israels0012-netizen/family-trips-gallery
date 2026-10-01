@@ -1,0 +1,23 @@
+A03_620_events : {'ok': True, 'notes': [('balance_100', 'n619'), ('balance_110', 'n618')], 'loaded': 620, 'queries': 25}
+A03_limit50_incomplete : {'remote': False, 'msg': 'הטעינה נעצרה: מספר השינויים מאז נקודת השחזור האחרונה חורג מיכולת הטעינה המוכחת. המצב הפעיל', 'notes_kept': 2}
+A03_recovered : True
+checkpoint : {'ok': True, 'snaps': [(2, 0.0, 1.0), (624, 22.0, 1.0), (626, 24.0, 1.0), (628, 622.0, 1.0)], 'parts': 4, 'through': 622.0}
+checkpoint_roundtrip_same_state : True
+events_loaded_after_checkpoint : 0
+B10_bad_events_ignored : {'ok': True, 'warn': ' · 70 רשומות שינוי לא תקינות נדחו'}
+B11_large_state : {'ok': True, 'notes': 54, 'parts': 3, 'maxlen': 30000}
+B11_reload_fresh_client : {'ok': True, 'notes': 54}
+A04_restore : {'ok': True, 'gen': 2.0, 'notes': [('balance_100', 'RESTORED')]}
+A04_stale_writer : {'ok': True, 'gen': 2.0, 'notes': [('balance_100', 'RESTORED')], 'notify': [('Warning', 'משתמש אחר שחזר גיבוי; המצב נטען מחדש והשינוי לא נשמר. בצע אותו שוב לאחר הטעינה.')]}
+A04_stale_checkpoint : {'snaps': [(628, 622.0, 1.0), (756, 752.0, 1.0), (758, 0.0, 2.0)], 'fresh_notes': [('balance_100', 'RESTORED')], 'gen': 2.0}
+A04_race_old_gen_event_ignored : [('balance_100', 'RESTORED')]
+A05_before : {'links': 1, 'reviews': 1, 'notes': ['balance_100', 'MANUAL|00000000-12ad-3dc9-0000-000000000001|D'], 'ok': True}
+A05_after : {'ok': True, 'entries': 0, 'links': 0, 'reviews': 0, 'notes': ['balance_100'], 'msg': 'מסונכרן עם הצוות · 20:42'}
+A05_orphan_dropped_not_blocking : {'ok': True, 'links': 0, 'warn': ' · 1 פריטים תלויים ביעד שאינו קיים לא הוחלו'}
+B09_orphan_review_import : {'ok': True, 'msg': 'הגיבוי נדחה בבדיקת תקינות; המצב המשותף לא הוחלף: סטטוס ראיה ליעד ללא ראיות: unmapped:LINK|NOT-A-REAL-TARGET', 'gen': 2.0}
+import_wrong_dataset : הגיבוי אינו JSON תקין של דשבורד זה; המצב לא הוחלף
+B08_foreign_snapshot : {'remote': False, 'msg': 'תוכן נקודת השחזור אינו תואם לזהות הרשומה; הטעינה נעצרה והמצב הפעיל לא הוחלף · הש', 'notes_unchanged': True}
+B08_cleanup_ok : True
+B12_audit_log_lines : (755, 755)
+unhandled : []
+exit 0

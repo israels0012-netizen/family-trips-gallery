@@ -1,0 +1,1163 @@
+<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>בדיקת v8 מול V97</title><style>body{font-family:Arial,sans-serif;background:#f4f6f9;color:#14263c;margin:0;line-height:1.65}main{max-width:1140px;margin:auto;padding:32px 28px 70px;background:white}h1{font-size:30px;color:#102238}h2{margin-top:36px;border-bottom:2px solid #d9aa3f;padding-bottom:8px}h3{font-size:19px;margin-top:0}.verdict{border-right:6px solid #b83442;padding:18px;background:#fff0f1;font-size:20px;font-weight:bold}.scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px}th,td{text-align:right;vertical-align:top;border:1px solid #ccd4df;padding:10px}th{background:#102238;color:white}tr:nth-child(even){background:#f6f8fb}article{border:1px solid #dbe1e9;border-radius:8px;padding:20px;margin:18px 0;break-inside:avoid}article p{margin:8px 0}details{margin:8px 0;border:1px solid #dbe1e9;padding:10px}summary{cursor:pointer;font-weight:bold}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f7fa;padding:12px;font-size:12px;line-height:1.45;text-align:left}a{color:#185da5}td{overflow-wrap:anywhere}@media(max-width:600px){main{padding:20px 12px}h1{font-size:24px}table{min-width:640px}}@media print{body{background:white}main{max-width:none;padding:0}details{display:none}a{color:inherit}h2{break-after:avoid}}</style></head><body><main><h1>ביקורת צולבת — Power Apps v8</h1><div class="verdict">לא ניתן לאשר את v8 כתקין או כתואם באופן מלא לדשבורד המקורי. נמצאו תקלות חוסמות, סיכוני מצב משותף ופערי יכולת.</div><p>נבדק הקובץ שהועלה, ללא שינוי בו. הדוח מפריד בין ממצאים שאומתו בקוד ובסימולציה מקומית, פערים מול המקור ותלויות שלא נבדקו בסביבת המשתמש. תאריך הבדיקה: 29.09.2026, שעון ישראל.</p><h2>מה נבדק</h2><div class="scroll"><table><thead><tr><th>רכיב</th><th>היקף</th></tr></thead><tbody><tr><td>קוד v8</td><td>5,837 שורות, 250 פקדים, 4,403 נוסחאות; YAML נקרא במלואו וכל הנוסחאות הועברו למנתח תחביר מקומי.</td></tr><tr><td>קובץ הבסיס</td><td>PowerApps_V97_CANVAS_SHARED_v8_ONE_PASTE.txt</td></tr><tr><td>טמפלט</td><td>V97_financial_dashboard_fixed (2).html</td></tr><tr><td>דשבורד מלא</td><td>dashboard_גמידה_פור_לייף_ישראל_בע_מ_2026-09-16 (1).html</td></tr><tr><td>JavaScript מקורי</td><td>קוד התבנית הריקה והמלאה זהה: 244 פונקציות בשם. הפונקציות הרלוונטיות הופעלו ב-Node עם DOM מדומה.</td></tr><tr><td>נתונים</td><td>120 שורות דוחות, 302 שורות פירוט ב-44 סעיפים, 18 מסמכים, 73 התאמות, 110 רכיבי מדדים, 7 גרפים.</td></tr><tr><td>זהות הקובץ</td><td>SHA-256: 510d0f228bdd7341c5d01c3eecf7508f721ee558efe06c84431374d83302c26e</td></tr></tbody></table></div><p>בדיקה מקומית אינה Power Apps Studio: לא בוצעה הדבקה, קומפילציה רשמית, הרצה מול SharePoint אמיתי או בדיקה חזותית של האפליקציה. סימולטור Power Fx הוא מימוש חלקי; הוא אינו מאמת טיפוסים, האצלה, רינדור, ביצועים או הרשאות של Microsoft. התוצאות החיוביות להלן מוגבלות לתרחישים ולכלים המתוארים. אין התחייבות שלא קיימות תקלות נוספות.</p><h2>עשרת הממצאים שהועברו לבדיקה</h2><div class="scroll"><table><thead><tr><th>#</th><th>נושא</th><th>תוצאה</th><th>פירוט</th></tr></thead><tbody><tr><td>1</td><td>טעינת 500 רשומות</td><td>לא נפתר באופן בטוח</td><td>הפרדת סוגים ו-checkpoints היא שיפור, אך ID&gt; אינו מואצל והשלמות אינה מוכחת. A03, B11.</td></tr><tr><td>2</td><td>Restore מקביל</td><td>תוקן חלקית</td><td>ThroughEventId מגן על אירועים אחרי קו החיתוך, אך checkpoint של לקוח ישן יכול לגבור על השחזור. A04.</td></tr><tr><td>3</td><td>סטטוסים לשיוך ידני</td><td>הפעולה תוקנה</td><td>שיוך → טופל → שמירה → טעינה עברו. מחיקת פקודה מקושרת עדיין נכשלת, ו-Review יתום מתקבל. A05, B09.</td></tr><tr><td>4</td><td>יעדי שיוך ידני</td><td>חשבונות ידניים תוקנו; רמות אחרות חסרות</td><td>210 יעדי המקור תואמים לבורר המקורי ונוספו חשבונות ידניים. שיוך לכל סעיף/ratio הוא הרחבה מעבר לבורר המקורי. B06.</td></tr><tr><td>5</td><td>Profit Drivers</td><td>הלוגיקה שופרה, הנוסחה אינה תקינה</td><td>כינוי d מחוץ לטווח. לאחר בידוד התקלה בתיקון זמני בזיכרון, נתוני הבסיס תאמו בשלוש הקטגוריות. A01.</td></tr><tr><td>6</td><td>ייצוא חסר</td><td>תוקן חלקית</td><td>נוספו עמודות לפירוט; ייצוא ראיות נכשל, מידע חסר ופקודות מקור מושמטות. A02, B02–B04.</td></tr><tr><td>7</td><td>השוואות: 8 יחסים</td><td>התצוגה תוקנה</td><td>FirstN(...,8) מחזיר בדיוק את שמונת הראשונים; כפתור ההעתקה עדיין ריק. B04.</td></tr><tr><td>8</td><td>יחסי שווי שוק</td><td>עיקר התיקון בוצע</td><td>נמצאים בדף ratios; יחס הון/שווי נוסף והפסד מטופל נכון. נותר הבדל אפס וחריגה ברוחב קטן. B17, B21.</td></tr><tr><td>9</td><td>KPI מול Raw ישן</td><td>תוקן בתרחישים שנבדקו</td><td>Raw הוחלף בפירוט המחושב מהמצב הפעיל. הוצאה ידנית 10 עדכנה רווח נקי ל-862.721 גם בפירוט.</td></tr><tr><td>10</td><td>סקירת מנהלים ברמת חשבון</td><td>אינו פער מהמקור שסופק</td><td>המקור מדרג סעיפי קצה בדוחות. v8 מחזיר את אותם 10 מזהים בבסיס. דירוג חשבונות הוא דרישה נוספת.</td></tr></tbody></table></div><h2>ממצאים מפורטים</h2><p>להלן 28 ממצאים ותלויות מקובצים. הספירה כוללת פערי התאמה ומגבלות, ולא רק שגיאות הרצה. סעיפי דרישה מורחבת ותלות חיצונית מסומנים בנפרד.</p><article id="A01"><h3>A01 · חוסם · Profit Drivers: כינוי רשומה לא מוגדר</h3><p>הכינוי d מוגדר בתוך Filter, אך AddColumns משתמש ב-d.Section וב-d.Current מחוץ לטווח הזה. ההבחנה הכלכלית החדשה נוספה, אבל הנוסחה שנמסרה אינה תקינה מבחינת תחום הרשומה.</p><p>ראיה: הרצת Items המקומית החזירה UNBOUND d. סריקת תחומי As בכל 4,403 הנוסחאות זיהתה אותה הפניה. לאחר תיקון הכינוי בזיכרון הבדיקה בלבד, שלוש רשימות חמשת הגורמים תאמו למקור בנתוני הבסיס.</p><p>רמת אימות: מאומת בקוד / בדיקה מקומית</p><p>מיקום בקובץ v8: V97Drivers.Items — שורה 5649</p><p>כיוון תיקון: להגדיר As d על הטבלה שמועברת ל-AddColumns; לבדוק גם שינוי סימן וסינון לפי Impact, ולא רק לפי הפרש גולמי.</p></article><article id="A02"><h3>A02 · חוסם · ייצוא ראיות: כינוי e מחוץ לטווח</h3><p>בתוך Concat מופיע LookUp(colV97Documents,DocId=e.DocId,Name), אך e הוגדר בתוך Filter ואינו קיים בגוף Concat.</p><p>ראיה: הרצת ייצוא evidence החזירה UNBOUND e; נמצאה גם בסריקת תחומים סטטית.</p><p>רמת אימות: מאומת בקוד / בדיקה מקומית</p><p>מיקום בקובץ v8: V97ExportView.OnSelect — שורה 5703</p><p>כיוון תיקון: לתת כינוי נפרד לטבלת Concat ולהשתמש בו בכל ההפניות המקוננות.</p></article><article id="A03"><h3>A03 · קריטי · טעינה לא מלאה עלולה להיראות כמסונכרנת</h3><p>אירועי v7/v8 מסוננים מול SharePoint באמצעות ID&gt;varV97ThroughEventId. Microsoft מתעדת שרק השוואת = נתמכת בהאצלה עבור ID של SharePoint. בדיקת CountRows נעשית אחרי הסינון ולכן אינה מוכיחה שהאוכלוסייה נקראה במלואה.</p><p>ראיה: במודל מפורש של סינון מקומי לאחר 500 אירועים, עם checkpoint עד 500 ואירוע חדש 501, נטענו אפס אירועים, RemoteReady היה true והודעת המצב הייתה מסונכרן. זהו שחזור של סיכון האצלה, לא עקבת רשת מ-SharePoint אמיתי.</p><p>רמת אימות: קוד + תיעוד Microsoft + סימולציית מגבלת טעינה</p><p>מיקום בקובץ v8: V97LoadShared.OnSelect — שורה 1226</p><p>כיוון תיקון: להחליף את שאילתת ID במסלול טעינה מוכח, מדופדף או מבוסס שדה מספרי מותאם/שירות מתאים; לא להסתפק בהעלאת המגבלה ל-2,000.</p></article><article id="A04"><h3>A04 · קריטי · Checkpoint ישן יכול לבטל שחזור מקביל</h3><p>עדיפות נקודת שמירה היא MaxEventId×10; עדיפות Restore היא Through×10+5. לקוח שקרא מצב ישן ואירוע מאוחר יותר יכול לשמור checkpoint בעל עדיפות גבוהה מהשחזור, אף שהמצב שבידו אינו כולל את השחזור.</p><p>ראיה: תרחיש: שחזור דרך אירוע 100 בעדיפות 1005; אירוע 101 שינה סעיף אחר. לקוח ישן שמר מצב דרך 101 בעדיפות 1010. ההערה בסעיף הראשון חזרה מ-RESTORED ל-OLD, והיישום הכריז על סנכרון.</p><p>רמת אימות: מאומת בקוד / בדיקה מקומית</p><p>מיקום בקובץ v8: V97Checkpoint.OnSelect — שורה 1291; V97ImportState.OnSelect — שורה 1386</p><p>כיוון תיקון: לקשור checkpoint לזהות/דור בסיס השחזור; לדחות כתיבה המבוססת על דור ישן. בדיקת רענון ואחריה Patch אינה נעילה אטומית.</p></article><article id="A05"><h3>A05 · קריטי · מחיקת פקודה עם ראיה משאירה מצב שאינו ניתן לטעינה</h3><p>מחיקת פקודה כותבת tombstone ל-Entries בלבד. Links המצביעים ל-MANUAL-Id נשארים. אימות הטעינה דוחה אותם כי הפקודה כבר אינה קיימת.</p><p>ראיה: נבדקו הוספת פקודה, שיוך DOC-001 לחשבון הידני ומחיקה: השיוך והפקודה נשמרו בהצלחה; המחיקה נשמרה בשרת המדומה, אך RemoteReady הפך false ונשארה מקומית הפקודה הישנה. במקור removeManualEntry מנקה גם שיוכים נלווים.</p><p>רמת אימות: מאומת בקוד / בדיקה מקומית</p><p>מיקום בקובץ v8: V97ConfirmYesdeleteconfirm.OnSelect — שורה 4326; V97ImportState.OnSelect — שורה 1386</p><p>כיוון תיקון: להחיל מחיקה וקשרים תלויים כאותה פעולה לוגית, או להסיר נגזרות בצורה עקבית בטעינה; לבדוק גם Reviews והערות.</p></article><article id="A06"><h3>A06 · תלות חוסמת אפשרית · נוספה תלות בשדה SharePoint בשם field_13</h3><p>v8 קורא, ממיין וכותב field_13 כעדיפות מספרית. השדה לא שימש כך ב-v7, ולא סופקה סכמת הרשימה בפועל.</p><p>ראיה: מופיע בשלושת מסלולי LoadShared, Checkpoint ו-Restore. אם חסר/טיפוסו אינו Number, צפויות שגיאות נוסחה או מחבר; אין ראיה שהשדה אכן חסר אצל המשתמש.</p><p>רמת אימות: תלות חיצונית שלא אומתה</p><p>מיקום בקובץ v8: V97LoadShared.OnSelect — שורה 1226; V97Checkpoint.OnSelect — שורה 1291; V97ImportState.OnSelect — שורה 1386</p><p>כיוון תיקון: לאמת שם פנימי וטיפוס מספרי, מיון והאצלה מול הרשימה האמיתית ולתעד דרישת התקנה.</p></article><article id="B01"><h3>B01 · גבוה · מסנני Drill-down אינם שקולים למקור</h3><p>המקור מסנן לפי גודל יתרה נוכחית/השוואתית או חלקה בסעיף, בחיבור OR. v8 מסנן לפי גודל השינוי ואחוז השינוי בין השנים, בחיבור AND.</p><p>ראיה: 44 סעיפים × ארבעה צירופי ספים = 176 השוואות; ב-88 השתנה מספר השורות. למשל balance_100 בסף 10%: מקור 1 שורה, v8 חמש שורות.</p><p>רמת אימות: מאומת בקוד / בדיקה מקומית</p><p>מיקום בקובץ v8: V97Drill.Items — שורה 3105; V97ExportView.OnSelect — שורה 5703</p><p>כיוון תיקון: ליישם את הגדרת המקור, לרבות בסיס האחוז ו-OR, ולבדוק אותה אוכלוסייה במסך ובייצוא.</p></article><article id="B02"><h3>B02 · גבוה · תוכן ייצוא הראיות עדיין אינו תואם</h3><p>גם לאחר פתרון A02, עמודת ההשוואה ועמודת אחוז השינוי ריקות בקוד. Difference הוא פער מסמך–ספרים, ולא בהכרח שינוי תקופתי. חסרים מטבע, מספר ראיות ורמת שיוך שקיימים בייצוא המקורי.</p><p>ראיה: בדיקה ישירה של ענף evidence ושל evidenceCenterExportRows במקור.</p><p>רמת אימות: מאומת בקוד / בדיקה מקומית</p><p>מיקום בקובץ v8: V97ExportView.OnSelect — שורה 5703</p><p>כיוון תיקון: להפריד בין שינוי תקופתי לבין פער התאמה; למלא נתונים ועמודות מתוך אותו מודל תצוגה, כולל פירוט ידני.</p></article><article id="B03"><h3>B03 · גבוה · ייצוא פקודות נוספות משמיט את פקודות המקור</h3><p>מסך הצג הכול כולל colV97SourceEntries, אך ענף additional מייצא רק colV97Entries, כלומר פקודות שהוזנו ביישום.</p><p>ראיה: במצב הבסיס מוצגות 92 שורות מקור והייצוא מחזיר כותרת בלבד.</p><p>רמת אימות: מאומת בקוד / בדיקה מקומית</p><p>מיקום בקובץ v8: V97SourceEntries.Items — שורה 4250; V97ExportView.OnSelect — שורה 5703</p><p>כיוון תיקון: לייצא את האוכלוסייה המוצגת בהתאם למסנן הכול/ידניות ולשמר גם פרטי צד נגדי ומקור.</p></article><article id="B04"><h3>B04 · בינוני · העתק טבלה במסך השוואות מחזיר כותרת בלבד</h3><p>CopyTable מחפש Page=varV97Page, אך comparisons אינו עמוד נתונים ב-colV97Rows.</p><p>ראיה: נבדק: שמונה יחסים מוצגים במסך, אפס שורות נתונים מועתקות.</p><p>רמת אימות: מאומת בקוד / בדיקה מקומית</p><p>מיקום בקובץ v8: V97Comparison.Items — שורה 2608; V97CopyTable.OnSelect — שורה 2320</p><p>כיוון תיקון: לכוון את ההעתקה לאותה אוכלוסייה של V97Comparison.</p></article><article id="B05"><h3>B05 · גבוה · מרכז הראיות אינו אותו מודל עבודה</h3><p>במקור הראיות מאוגדות לפי יעד ביקורת והסטטוס נקבע ליעד. v8 מציג התאמה לכל מסמך ומנהל Reviews לפי מפתח התאמה; סימון התאמה אחת אינו סימון החשבון כולו.</p><p>ראיה: הרצת המקור: 37 יעדים מאוגדים. v8: 73 התאמות לפני שיוכים ידניים.</p><p>רמת אימות: מאומת בקוד / בדיקה מקומית</p><p>מיקום בקובץ v8: V97Evidence.Items — שורה 4524; V97Review0.OnSelect — שורה 4628; V97EvidenceRow.Text — שורה 4543</p><p>כיוון תיקון: לבחור ולממש במפורש מודל יעד/חשבון כמו המקור, עם פירוט המסמכים תחתיו, אם נדרשת התאמה מלאה.</p></article><article id="B06"><h3>B06 · חלקי / דרישה מורחבת · יעדי שיוך ידני: חשבונות נוספו, סעיפים ללא חשבון נחסמו</h3><p>v8 מאפשר לבחור מכל colV97AllDrill, כולל חשבונות ידניים. הוא מחייב Account ולא מאפשר יצירת שיוך לסעיף ללא חשבון.</p><p>ראיה: 210 יעדים מקוריים, כמו evidenceAssignableTargets במקור; הוספת חשבון ידני ושיוך אליו עברה. ניסיון שיוך לסעיף בלבד נדחה. חשוב לדייק: גם בורר השיוך הידני המקורי מתבסס על חשבונות Drill-down; הדרישה לשיוך לכל ratio/כותרת היא הרחבה, לא פער מוכח מהבורר המקורי.</p><p>רמת אימות: מאומת בקוד / בדיקה מקומית</p><p>מיקום בקובץ v8: V97LinkTargets.Items — שורה 5783; V97LinkAdd.OnSelect — שורה 4975</p><p>כיוון תיקון: לסגור דרישה מפורשת לגבי רמות שיוך. אם נדרשות גם כותרות/יחסים, להוסיף סוג יעד שאינו חשבון ולוודא מחזור חיים מלא.</p></article><article id="B07"><h3>B07 · גבוה · מידע מפורט על ראיות הוחלף בספירות בלבד</h3><p>ב-v8 כרטיסים מציינים כמה פריטים לא הותאמו וכמה בדיקות קבוצתיות קיימות; הנתונים שחולצו הוחלפו במשפט הפניה למסמך. אין בכרטיסים את תוכן הפריטים והבדיקות שהיה נגיש כ-JSON ב-v7.</p><p>ראיה: בקלט יש 40 פריטים לא מותאמים, 7 בדיקות קבוצתיות ונתונים שחולצו ב-18 מסמכים. הקלט נשמר, אך הנתיב החדש לא מציג את מלוא התוכן. 73 פירוטי ההתאמות עצמם עברו בדיקת הפעלה מקומית.</p><p>רמת אימות: מאומת בקוד / בדיקה מקומית</p><p>מיקום בקובץ v8: V97EvidenceReadable.OnSelect — שורה 5532; V97EvidenceRaw.Default — שורה 4765</p><p>כיוון תיקון: להציג את הפריטים והבדיקות עם שמות שדות וערכים, או לספק גישה ברורה לכל הנתונים שנשמרו; אין להסתפק במספר הפריטים.</p></article><article id="B08"><h3>B08 · גבוה · זהות Snapshot אינה נבדקת לפני מיזוג</h3><p>בטעינה נבחר Snapshot לפי עמודות SharePoint, אבל Dataset ו-Version בתוך AuditNote אינם מאומתים לפני בניית JSON חדש עם Dataset הנוכחי. כך האימות המאוחר אינו בודק את זהות המקור.</p><p>ראיה: Snapshot שעמודת field_14 שלו נכונה אך תוכנו כולל Dataset=WRONG והערה תקינה, התקבל וההערה הוחלה. לעומת זאת ייבוא גיבוי ישיר עם Dataset שגוי נדחה.</p><p>רמת אימות: מאומת בקוד / בדיקה מקומית</p><p>מיקום בקובץ v8: V97LoadShared.OnSelect — שורה 1226; V97ImportState.OnSelect — שורה 1386</p><p>כיוון תיקון: לאמת את מעטפת ה-Snapshot, גרסתו, ThroughEventId והתאמתו לעמודות הרשומה לפני מיזוג.</p></article><article id="B09"><h3>B09 · בינוני · Review ידני יתום מתקבל</h3><p>אימות Reviews מקבל כל מפתח שמתחיל ב-LINK|, בלי לוודא שיש Link תואם במצב המיובא.</p><p>ראיה: גיבוי עם LINK|NOT-A-REAL-TARGET וסטטוס טופל התקבל ונשמר.</p><p>רמת אימות: מאומת בקוד / בדיקה מקומית</p><p>מיקום בקובץ v8: V97ImportState.OnSelect — שורה 1386</p><p>כיוון תיקון: לבדוק התאמה מלאה מול colV97StageLinks ולא להסתפק בקידומת.</p></article><article id="B10"><h3>B10 · בינוני · מפתח אירוע אינו מאומת מול מפתח ה-Payload</h3><p>המיזוג בוחר את האירוע האחרון לפי Key במעטפת, ולאחר מכן לוקח את Key/Id מתוך ה-Payload. אין בדיקת התאמה בין השניים.</p><p>ראיה: אירוע Notes עם Key=balance_100 ו-Payload.Key=balance_110 נטען כהערה ל-balance_110.</p><p>רמת אימות: מאומת בקוד / בדיקה מקומית</p><p>מיקום בקובץ v8: V97LoadShared.OnSelect — שורה 1226</p><p>כיוון תיקון: לאמת את מפתח הישות מול מעטפת האירוע בכל סוג, לפני קבלה למיזוג.</p></article><article id="B11"><h3>B11 · גבוה · גודל Checkpoint מחזיר את סיכון הצטברות האירועים</h3><p>Checkpoint מוגבל ל-55,000 תווים. כאשר הוא גדול מדי, השמירה השוטפת נשארת פעילה ונקודת השמירה אינה נוצרת; האירועים ממשיכים להצטבר עד מגבלת הטעינה.</p><p>ראיה: 70 הערות של 1,000 תווים יצרו Payload באורך 73,983 תווים במודל. ההודעה דיווחה שלא נוצר checkpoint, אך RemoteReady נשאר true.</p><p>רמת אימות: מאומת בקוד / בדיקה מקומית</p><p>מיקום בקובץ v8: V97Checkpoint.OnSelect — שורה 1291; V97LoadShared.OnSelect — שורה 1226</p><p>כיוון תיקון: לתכנן אחסון מצב שאינו תלוי ברשומת JSON יחידה ולהגדיר טיפול לפני הגעה למצב שלא ניתן לטעון.</p></article><article id="B12"><h3>B12 · בינוני · היסטוריה מוגבלת ל-200 פריטים</h3><p>LastN(...,200) מקצר את ההיסטוריה במצב הפעיל ובנקודות השמירה. אין במסכים מסלול מתועד להיסטוריה המלאה.</p><p>ראיה: מופיע בטעינה, Checkpoint ו-Restore. רשומות Event קודמות אינן נמחקות מהשרת, אך אינן זמינות דרך ההיסטוריה המקוצרת הזו.</p><p>רמת אימות: מאומת בקוד / בדיקה מקומית</p><p>מיקום בקובץ v8: V97LoadShared.OnSelect — שורה 1226; V97Checkpoint.OnSelect — שורה 1291; V97ImportState.OnSelect — שורה 1386</p><p>כיוון תיקון: להפריד בין היסטוריית תצוגה קצרה לבין יומן ביקורת מלא ונגיש; לתעד את המדיניות.</p></article><article id="B13"><h3>B13 · בינוני · אין ייבוא אוניברסלי של נתונים פיננסיים</h3><p>החברה, התקופה, השורות, הקשרים וחלק גדול מנוסחאות המדדים מקובעים לחברה שסופקה. Restore משחזר עריכות ולא מחליף financial JSON.</p><p>ראיה: V97Initialize כולל GFL, שנת 2025 ו-Dataset קבוע; V97Recalculate מפנה לשמות סעיפים קבועים.</p><p>רמת אימות: מאומת בקוד / בדיקה מקומית</p><p>מיקום בקובץ v8: V97Initialize.OnSelect — שורה 1347; V97Recalculate.OnSelect — שורה 1179; V97ImportState.OnSelect — שורה 1386</p><p>כיוון תיקון: אם המטרה היא תבנית לשימוש חוזר בחברות שונות, נדרש מסלול קליטת נתונים ומיפוי דינמי; אין לראות בקובץ מנוע אוניברסלי.</p></article><article id="B14"><h3>B14 · מגבלה לא מאומתת · בדיקות מט״ח אינן מוכחות מול מגוון סכמות</h3><p>המקור מזהה מספר מבני נתוני מט״ח. v8 משתמש בעמודות HasFx ו-Rate שחושבו מראש; בקלט שסופק אין שורות מט״ח.</p><p>ראיה: גלריית FX נטענה עם אפס שורות. זה אינו אישור לדיוק חישוב שערים, חסרים, סימנים וטווחים.</p><p>רמת אימות: מאומת בקוד / בדיקה מקומית</p><p>מיקום בקובץ v8: V97Fx.Items — שורה 3734</p><p>כיוון תיקון: לבדוק קלט אמיתי עם מטבע נוסף וסכמות מקור שונות; טווח מינימום/מקסימום הפוך מתנהג אחרת במקור.</p></article><article id="B15"><h3>B15 · פער יכולת · אין מקבילה מלאה לשמירת HTML, ייצוא Excel והדפסה</h3><p>ב-v8 נעשה שימוש בהעתקה ו-JSON גיבוי. במקור קיימים שמירת דשבורד מלא עם הערות, יצוא קובץ Excel תואם-HTML והדפסת הדשבורד.</p><p>ראיה: סריקת כל הפעולות לא מצאה פעולת Print או יצירת דשבורד HTML מלא. במקור exportToExcel יוצר קובץ .xls מבוסס HTML, ולא XLSX אמיתי.</p><p>רמת אימות: מאומת בקוד / בדיקה מקומית</p><p>מיקום בקובץ v8: V97ExportView.OnSelect — שורה 5703; V97CopyExport.OnSelect — שורה 5175</p><p>כיוון תיקון: להגדיר תחליפים פונקציונליים מתאימים ל-Canvas ולתעד אותם כתחליפים, לא כיכולות זהות.</p></article><article id="B16"><h3>B16 · תלות / פער יכולת · מסמכים חדשים וקישורי פתיחה</h3><p>אפשר לקבוע URL למסמך שכבר נטען, אך אין הוספת מסמך חיצוני חדש כמו במקור. פתיחה דורשת HTTPS; לא סופקו בקלט כתובות HTTPS תקינות למסמכים.</p><p>ראיה: הפעולה Launch מוגנת בבדיקת https://; 18 המסמכים נטענים כאוסף קבוע.</p><p>רמת אימות: מאומת בקוד / בדיקה מקומית</p><p>מיקום בקובץ v8: V97LinkAdd.OnSelect — שורה 4975</p><p>כיוון תיקון: לספק מיפוי קישורים אמיתי לכל DocId ולהוסיף מסלול קליטה אם נדרשים מסמכים חדשים; אין להסיק שקישור נבדק רק כי נשמר.</p></article><article id="B17"><h3>B17 · בינוני · פריסה קטנה חורגת מגבולות המסך</h3><p>כמה פקדים אינם מתאימים למסכים קטנים. בפרט כרטיסי שווי השוק החדשים נמשכים אל מחוץ לרוחב 390.</p><p>ראיה: נבדקו 4 גדלים × 6 עמודים × 19 מצבי חלון. 23,162 מופעים גלויים חושבו. אפס חריגות מסגרת ב-1280×800 ו-1440×900; 202 מופעים חורגים/חוזרים בגדלים הקטנים, ב-9 פקדים. לדוגמה V97PriceEarnings מתחיל ב-x=434 במסך ברוחב 390.</p><p>רמת אימות: מאומת בקוד / בדיקה מקומית</p><p>מיקום בקובץ v8: V97PriceEarnings.X — שורה 2895; V97PriceToBook.X — שורה 2874; V97Main.Height — שורה 2455</p><p>כיוון תיקון: להתאים עימוד ורוחבים לנקודות שבירה. זו בדיקת גאומטריה בלבד; לא נבדקו רינדור טקסט, חפיפות ו-RTL בפלטפורמה.</p></article><article id="B18"><h3>B18 · בינוני · מיון וחיפוש בפירוט מוגבלים</h3><p>המקור מאפשר מיון פירוט לפי סכום וחיפוש גם לפי חברה, קוד ומקור. Items של V97Drill אינו כולל מיון, והחיפוש בו מתייחס רק ל-Name ו-Account.</p><p>ראיה: השוואת renderDrilldownRows ל-V97Drill.Items; אין בורר מיון פעיל לפירוט שנשען על אותו Items.</p><p>רמת אימות: מאומת בקוד / בדיקה מקומית</p><p>מיקום בקובץ v8: V97Drill.Items — שורה 3105</p><p>כיוון תיקון: להוסיף מיון ומפת חיפוש שקולים למקור, ולייצא באותו סדר.</p></article><article id="B19"><h3>B19 · בינוני · הערות לחשבון ידני נשמרות ברמת הסעיף</h3><p>בבניית שורות ידניות ובהצגת תוצאות הניתוח, NoteKey לחשבון ידני הוא Section. לכן שתי פקודות ידניות באותו סעיף חולקות יעד הערה.</p><p>ראיה: במקור drillNoteKey מזהה שורת Drill-down, ומחיקת פקודה מנקה את ההערה שלה.</p><p>רמת אימות: מאומת בקוד / בדיקה מקומית</p><p>מיקום בקובץ v8: V97RebuildViews.OnSelect — שורה 5431; V97Analysis.Items — שורה 3458</p><p>כיוון תיקון: לתת מפתח יציב ונפרד לכל שורה ידנית ולטפל בו בייבוא, במחיקה ובשחזור.</p></article><article id="B20"><h3>B20 · בינוני · ייצוא טקסט חופשי אינו מגן על מבנה TSV</h3><p>הערכים מחוברים באמצעות Tab ושורה חדשה ללא טיפול בתווים אלו בתוך הנתונים.</p><p>ראיה: תיאור חוקי ב-JSON שכלל שורה חדשה ו-Tab יצר שורות ברוחב 7, 1 ו-8 עמודות במקום 7 אחידות.</p><p>רמת אימות: מאומת בקוד / בדיקה מקומית</p><p>מיקום בקובץ v8: V97ExportView.OnSelect — שורה 5703</p><p>כיוון תיקון: לנקות/להמיר תווי מפריד או להשתמש בפורמט יצוא בעל escaping תקין.</p></article><article id="B21"><h3>B21 · נמוך · סטיות קטנות ביחסי שווי שוק</h3><p>המיקום והטיפול בהפסד תוקנו. כאשר ההון אפס, יחס הון לשווי שוק מוצג כ-0% ב-v8, בעוד המקור מציג מקף.</p><p>ראיה: נבדקו חמישה צירופי שווי שוק, רווח והון. רווח שלילי מוצג כלא רלוונטי (הפסד); בהון אפס נותר הבדל תצוגה.</p><p>רמת אימות: מאומת בקוד / בדיקה מקומית</p><p>מיקום בקובץ v8: V97Valuation.Text — שורה 2851; V97PriceEarnings.Text — שורה 2893</p><p>כיוון תיקון: להכריע אם נדרשת התאמה תו-בתו גם במצב אפס; אין זו אותה חומרה כמו כשל שמירה.</p></article><article id="B22"><h3>B22 · נמוך · הוראת ההגדרות אינה מתארת את מנגנון v8</h3><p>הטקסט עדיין מתאר עצירה ב-500 רשומות באופן כללי, אף שהקוד עבר ל-Snapshots ואוכלוסיות אירועים נפרדות.</p><p>ראיה: הטקסט נשאר ללא שינוי מ-v7.</p><p>רמת אימות: מאומת בקוד / בדיקה מקומית</p><p>מיקום בקובץ v8: V97SettingsText.Text — שורה 2719</p><p>כיוון תיקון: לעדכן את הוראות התפעול לאחר תיקון הארכיטקטורה, כולל מגבלות וגיבוי.</p></article><h2>בדיקות שעברו והגבולות שלהן</h2><div class="scroll"><table><thead><tr><th>בדיקה</th><th>תוצאה</th></tr></thead><tbody><tr><td>YAML ושמות פקדים</td><td>אין שמות פקדים כפולים; אין הפניות V97 לפקד שאינו קיים.</td></tr><tr><td>תחביר מקומי</td><td>4,403 נוסחאות עברו את המנתח המקומי; הדבר לא זיהה לבדו את שתי שגיאות תחום הרשומה.</td></tr><tr><td>טעינה מלאה בשרת מדומה קטן</td><td>כל אוספי הבסיס נטענו, ונוצר checkpoint ראשוני.</td></tr><tr><td>שימור נתונים</td><td>כל 302 רשומות Drill-down וכל 18 רשומות המסמכים נשמרו סמנטית כ-JSON המקורי; אוספי הבסיס זהים ל-v7.</td></tr><tr><td>בקרות פקודות</td><td>90 תרחישים, כל יעד רישום בשני הצדדים מול מזומן: שימור פער A=L+E המקורי, נתוני השוואה, הקשר לרווח נקי, EBITDA וסך המזומן. אפס כשלי הבקרות הללו.</td></tr><tr><td>ארבעה סיווגי תזרים</td><td>שוטפת/השקעה/מימון עודכנו בתרחישים שנבדקו; noncash המשפיע על מזומן נדחה.</td></tr><tr><td>אוכלוסיות ניתוח</td><td>בסף 50/0: 75 חריגות זהות למקור, 14 יתרות ללא שינוי, אותם 10 מזהי סקירת מנהלים.</td></tr><tr><td>השוואות</td><td>8 יחסים בדיוק ובסדר המקורי.</td></tr><tr><td>KPI</td><td>לכל 15 היחסים פירוט; תרחיש הוצאה ידנית עדכן את הפירוט ואת Raw.</td></tr><tr><td>ראיות</td><td>שיוך ידני וסטטוס טופל נשמרו ונקראו מחדש; 73 פירוטי התאמות הופעלו ללא שגיאת סימולציה.</td></tr><tr><td>שווי שוק</td><td>הפסד, רווח אפס ושווי שוק אפס טופלו בבדיקות. הבדל בהון אפס מפורט B21.</td></tr><tr><td>כשל כתיבה</td><td>כשל שרת מדומה לא הוסיף הערה פעילה ושחרר את נעילת הסנכרון.</td></tr><tr><td>ייבוא לא תקין</td><td>JSON פגום, Dataset שגוי בייבוא ישיר, סכום שלילי והערה כפולה נדחו. בדיקות אחרות מצאו פערים B08–B10.</td></tr><tr><td>עריכות רגילות במקביל</td><td>מפתחות שונים נשמרו; באותו מפתח האירוע האחרון קבע. זה אינו פותר את מרוץ השחזור A04.</td></tr><tr><td>מסכים גדולים</td><td>חישובי המסגרת לא חרגו בשני גדלי שולחן העבודה. לא מדובר באישור חזותי או בדיקת חפיפות.</td></tr></tbody></table></div><h2>מפת התאמה פונקציונלית ועיצובית</h2><div class="scroll"><table><thead><tr><th>תחום</th><th>מצב מול המקור</th></tr></thead><tbody><tr><td>גופן, צבעים ורקע</td><td>Arial, רקע כחול כהה, זהב, לבן וצבעי שינוי הועברו ברובם. אין אישור לפיקסלים, גדלי טקסט, גלישה, סדר קריאה ויישור RTL בפועל.</td></tr><tr><td>עימוד</td><td>250 פקדי Canvas מחליפים DOM/CSS. נקודות השבירה והפריסה שונות; B17 מתעד חריגות מוכחות.</td></tr><tr><td>מאזן, רווח והפסד, תזרים ויחסים</td><td>האוכלוסייה המקורית נשמרה; סכומי כותרות מחושבים. יש נרמולים מכוונים ותיקוני בסיס המפורטים בהמשך.</td></tr><tr><td>פתיחה וסגירת היררכיה</td><td>קיימת מפת קשרים; פקודות תזרים השקעה/מימון מוסיפות שורות וקשרים. הבדיקה הייתה לוגית מקומית.</td></tr><tr><td>Drill-down</td><td>פירוט מקור וידני קיימים. מסננים, מיון, חיפוש והערות אינם זהים; B01, B18, B19.</td></tr><tr><td>מדדים והסבר חישוב</td><td>5 כרטיסי KPI ו-15 פירוטי יחסים. פירוט עדכני קיים; אין זהות מלאה לפריסת המקור או פירוט השפעת כל פקודה בשמה.</td></tr><tr><td>סקירת מנהלים</td><td>בחירת 10 סעיפים תואמת בבסיס. אינה דירוג חשבונות, כפי שגם המקור אינו כזה.</td></tr><tr><td>חריגות וללא שינוי</td><td>אוכלוסיות הבסיס שנבדקו תואמות; אין בכך הוכחה לכל מצב מט״ח וקלט עתידי.</td></tr><tr><td>גרפים</td><td>7 גרפי SVG קיימים; Drivers חסום A01. אי אפשר לאשר התאמה חזותית ללא רינדור.</td></tr><tr><td>פקודות ידניות</td><td>בקרות הרישום שנבדקו עברו; מחיקה עם קשרי ראיות נכשלת A05.</td></tr><tr><td>ראיות</td><td>18 מסמכים ו-73 התאמות קיימים; שינוי במודל האיגוד, נתונים נסתרים ויצוא שגוי.</td></tr><tr><td>הערות ושיתוף</td><td>שמירה באירועים משותפים מחליפה אחסון דפדפן; שיתוף הוא תוספת ליכולת המקור וכרוך ב-A03–A06.</td></tr><tr><td>גיבוי ושחזור</td><td>גיבוי JSON של עריכות; אינו דשבורד HTML שמיש עצמאית ואינו החלפת נתוני חברה.</td></tr><tr><td>Ask AI</td><td>10 שאלות המקור הועברו; אין קריאה אוטומטית למודל.</td></tr><tr><td>בדיקות מט״ח</td><td>אין אוכלוסיית מקור עם מט״ח לאימות; B14.</td></tr><tr><td>שמירה והיסטוריה</td><td>Append-only נשמר; snapshot/restore אינם בטוחים מספיק במקביל, וההיסטוריה הפעילה מוגבלת.</td></tr><tr><td>קישורים ומסמכים</td><td>דורשים חיבור אמיתי ומיפוי HTTPS; אין הוספת מסמך חדש כמו במקור.</td></tr><tr><td>חיפוש וייצוא</td><td>קיימים, אך אינם שקולים באוכלוסייה, בעמודות וביכולות הקבצים.</td></tr></tbody></table></div><h2>נתוני מקור וסטיות מכוונות — אין לתקן בכוח</h2><p>בקלט המקורי כבר קיימים פערים: מאזן נכסים פחות התחייבויות והון −0.002 אלפי ש״ח; רווח תזרים 874 מול רווח נקי 872.721, פער 1.279; יתרת מזומן בתזרים 2453 מול מאזן 2453.526, פער −0.526. אין לאפס פערים אלו על ידי שינוי נתוני המקור.</p><p>ימי מלאי וספקים R12/R13 הם 0 בקלט אף שאין עלות מכר. ב-Canvas הם מוצגים כחסר. אחוז הרווח הגולמי בדוח רווח והפסד נורמל מ-1 ל-100. בכותרות התזרים נמנע סכום כפול של פרטים וסך הכול. אלו הבדלים קיימים עוד לפני v8, ולא רגרסיות חדשות.</p><p>גם המקור אינו תמיד ייחוס מושלם לפקודות ידניות: בבדיקה ישירה manualPostingDelta של סעיף שכר pnl_2400 החזיר null, ולכן המקור דוחה רישום ש-v8 כן יודע להחיל. ההשוואה מבחינה בין התאמה למקור לבין נכונות חשבונאית; תוצאות כאלה לא סווגו אוטומטית כבאג ב-v8. הראיות המקוריות מסומנות partialComputation, ולכן שימור 18 המסמכים אינו אישור לכיסוי ביקורת מלא.</p><h2>מה נדרש לפני אישור להפעלה</h2><p>ראשית לסגור את A01–A05 ואת דרישת הסכמה A06; לאחר מכן להשלים את פערי האוכלוסיות, הייצוא והראיות בהתאם לדרישות שנקבעו. בדיקות הקבלה בפלטפורמה צריכות לכלול הדבקה ו-App Checker, סכמה והאצלה אמיתיות, רשימה מעל 500 ומעל 2,000 רשומות, שני משתמשים עם שחזור מקביל, מחיקת פקודה עם קשרים, כשל רשת, ועריכת גיבוי לא תקין. יש להשוות מסכים וצילומים באותם גדלים ולבדוק RTL, גלילה, טקסט וקישורים. בדיקות אלו לא בוצעו בדוח הנוכחי.</p><h2>מקורות טכניים</h2><ul><li><a href="https://learn.microsoft.com/en-us/power-apps/maker/canvas-apps/connections/connection-sharepoint-online">Microsoft: יכולות האצלה של SharePoint, כולל מגבלת ID</a></li><li><a href="https://learn.microsoft.com/en-us/power-platform/power-fx/operators">Microsoft: ThisRecord, As וטווחי רשומות</a></li><li><a href="https://learn.microsoft.com/en-us/power-apps/maker/canvas-apps/delegation-overview">Microsoft: מגבלות האצלה ושלמות תוצאות</a></li></ul><h2>נספח: תוצאות בדיקות מקומיות</h2><p>תוצאות גולמיות לצורך שחזור ובדיקה נגדית. Text(number) בסימולטור אינו מיישם עיצוב ספרות של Power Apps, ולכן מספרים עשויים לכלול שאריות נקודה צפה. בחינת גאומטריה אינה רינדור. בדיקת Profit Drivers לאחר בידוד שגיאת הכינוי שינתה עותק בזיכרון בלבד; הקובץ שהועלה לא שונה.</p><details><summary>full_start</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;full_start&quot;,
+  &quot;result&quot;: {
+    &quot;ready&quot;: true,
+    &quot;counts&quot;: {
+      &quot;colV97Base&quot;: 120,
+      &quot;colV97Drill&quot;: 302,
+      &quot;colV97Documents&quot;: 18,
+      &quot;colV97Matches&quot;: 73,
+      &quot;colV97Components&quot;: 110,
+      &quot;colV97Charts&quot;: 7
+    },
+    &quot;server_records&quot;: 1,
+    &quot;logs&quot;: []
+  }
+}</pre></details><details><summary>formula_grammar</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;formula_grammar&quot;,
+  &quot;result&quot;: {
+    &quot;formulas&quot;: 4403,
+    &quot;errors&quot;: []
+  }
+}</pre></details><details><summary>source_collections_exact_vs_v7</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;source_collections_exact_vs_v7&quot;,
+  &quot;result&quot;: {
+    &quot;colV97Base&quot;: true,
+    &quot;colV97Effects&quot;: true,
+    &quot;colV97Drill&quot;: true,
+    &quot;colV97Documents&quot;: true,
+    &quot;colV97Matches&quot;: true,
+    &quot;colV97Components&quot;: true,
+    &quot;colV97Issues&quot;: true,
+    &quot;colV97Insights&quot;: true,
+    &quot;colV97Questions&quot;: true,
+    &quot;colV97AuditProcedures&quot;: true
+  }
+}</pre></details><details><summary>comparisons</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;comparisons&quot;,
+  &quot;result&quot;: {
+    &quot;count&quot;: 8,
+    &quot;ids&quot;: [
+      &quot;ratios_R01&quot;,
+      &quot;ratios_R02&quot;,
+      &quot;ratios_R03&quot;,
+      &quot;ratios_R04&quot;,
+      &quot;ratios_R05&quot;,
+      &quot;ratios_R06&quot;,
+      &quot;ratios_R07&quot;,
+      &quot;ratios_R08&quot;
+    ]
+  }
+}</pre></details><details><summary>profit_drivers_formula</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;profit_drivers_formula&quot;,
+  &quot;error&quot;: &quot;UNBOUND d&quot;
+}</pre></details><details><summary>export_drill</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;export_drill&quot;,
+  &quot;result&quot;: {
+    &quot;lines&quot;: 6,
+    &quot;header&quot;: &quot;סעיף\tקוד סעיף\tחשבון\tתיאור\t31.12.2025\t31.12.2024\tהפרש\tשינוי %\tמטבע\tמקור&quot;,
+    &quot;sample&quot;: [
+      &quot;מזומנים בשקלים\t100\t1010004\tקופה קטנה-אייל אסרף\t1.565\t0.382\t1.1829999999999998\t309.6858638743455\tאלפי ש\&quot;ח\ttrial_balance&quot;,
+      &quot;מזומנים בשקלים\t100\t1020001\tבנק הפועלים עו\&quot;ש 12-061-310689\t-196.433\t0.0\t-196.433\tחדש\tאלפי ש\&quot;ח\ttrial_balance&quot;
+    ]
+  }
+}</pre></details><details><summary>export_evidence</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;export_evidence&quot;,
+  &quot;error&quot;: &quot;UNBOUND e&quot;
+}</pre></details><details><summary>export_additional</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;export_additional&quot;,
+  &quot;result&quot;: {
+    &quot;lines&quot;: 1,
+    &quot;header&quot;: &quot;תיאור\tאסמכתא\tחובה\tזכות\tסכום\tסיווג תזרים\tתאריך&quot;,
+    &quot;sample&quot;: []
+  }
+}</pre></details><details><summary>export_exec</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;export_exec&quot;,
+  &quot;result&quot;: {
+    &quot;lines&quot;: 11,
+    &quot;header&quot;: &quot;סעיף\tקוד\t31.12.2025\t31.12.2024\tהפרש\tשינוי %&quot;,
+    &quot;sample&quot;: [
+      &quot;מוסדות\t1220\t8445.347\t1056.407\t7388.94\t699.4406511884151&quot;,
+      &quot;חברות קשורות\t360\t8754.94\t1997.936\t6757.004000000001\t338.19922159668783&quot;
+    ]
+  }
+}</pre></details><details><summary>export_unchanged</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;export_unchanged&quot;,
+  &quot;result&quot;: {
+    &quot;lines&quot;: 15,
+    &quot;header&quot;: &quot;סעיף\tחשבון\tתיאור\t31.12.2025\t31.12.2024\tסיבה&quot;,
+    &quot;sample&quot;: [
+      &quot;עלות\t3000010\tנכס אמרגד מטלון פתח תקוה\t6596.069\t6596.069\tמטבע הדוח ללא שינוי&quot;,
+      &quot;הלוואות לזמן קצר\t5004052\tהלואה 3,901,400 בנה\&quot;פ-04.12.22\t3900.0\t3900.0\tמטבע הדוח ללא שינוי&quot;
+    ]
+  }
+}</pre></details><details><summary>export_exceptions</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;export_exceptions&quot;,
+  &quot;result&quot;: {
+    &quot;lines&quot;: 303,
+    &quot;header&quot;: &quot;סעיף\tחשבון\tתיאור\t31.12.2025\t31.12.2024\tהפרש\tסוגי חריגה&quot;,
+    &quot;sample&quot;: [
+      &quot;ספקים בארץ\t4280174\tמאגרי ארכיב וגניזה בע\&quot;מ\t5.953\t-0.017\t5.970000000000001\tשינוי מהותי · &quot;,
+      &quot;מוסדות\t1961998\tמע\&quot;מ חו\&quot;ז מאוחד\t8361.833\t985.11\t7376.723000000001\tשינוי מהותי · &quot;
+    ]
+  }
+}</pre></details><details><summary>manual_link_review_roundtrip</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;manual_link_review_roundtrip&quot;,
+  &quot;result&quot;: {
+    &quot;ready&quot;: true,
+    &quot;links&quot;: [
+      {
+        &quot;Key&quot;: &quot;DOC-001|balance_100|1010004&quot;,
+        &quot;DocId&quot;: &quot;DOC-001&quot;,
+        &quot;Section&quot;: &quot;balance_100&quot;,
+        &quot;Account&quot;: &quot;1010004&quot;,
+        &quot;Name&quot;: &quot;מזומנים בשקלים&quot;
+      }
+    ],
+    &quot;reviews&quot;: [
+      {
+        &quot;Key&quot;: &quot;LINK|DOC-001|balance_100|1010004&quot;,
+        &quot;Status&quot;: &quot;טופל&quot;,
+        &quot;Note&quot;: &quot;checked&quot;,
+        &quot;At&quot;: &quot;2026-09-29T20:00:00Z&quot;
+      }
+    ]
+  }
+}</pre></details><details><summary>delete_manual_entry_with_evidence_link</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;delete_manual_entry_with_evidence_link&quot;,
+  &quot;result&quot;: {
+    &quot;link_saved_ready&quot;: true,
+    &quot;after_delete_ready&quot;: false,
+    &quot;message&quot;: &quot;המצב נדחה בבדיקת תקינות; המצב הפעיל לא הוחלף&quot;,
+    &quot;active_entries&quot;: 1,
+    &quot;deleted_on_server&quot;: true
+  }
+}</pre></details><details><summary>source_analysis_parity</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;source_analysis_parity&quot;,
+  &quot;result&quot;: {
+    &quot;exception_exact&quot;: true,
+    &quot;exceptions&quot;: 75,
+    &quot;unchanged&quot;: 14,
+    &quot;source_unchanged&quot;: 14,
+    &quot;executive_exact&quot;: true
+  }
+}</pre></details><details><summary>posting_invariants_90</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;posting_invariants_90&quot;,
+  &quot;result&quot;: {
+    &quot;scenarios&quot;: 90,
+    &quot;failures&quot;: []
+  }
+}</pre></details><details><summary>valuation_edge_cases</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;valuation_edge_cases&quot;,
+  &quot;result&quot;: [
+    {
+      &quot;input&quot;: [
+        1000,
+        100,
+        500
+      ],
+      &quot;pe&quot;: &quot;מכפיל רווח\n10.0x&quot;,
+      &quot;pb&quot;: &quot;מכפיל הון\n2.0x&quot;,
+      &quot;equity_market&quot;: &quot;יחס הון לשווי שוק\n50.0%&quot;
+    },
+    {
+      &quot;input&quot;: [
+        1000,
+        -100,
+        500
+      ],
+      &quot;pe&quot;: &quot;מכפיל רווח\nלא רלוונטי (הפסד)&quot;,
+      &quot;pb&quot;: &quot;מכפיל הון\n2.0x&quot;,
+      &quot;equity_market&quot;: &quot;יחס הון לשווי שוק\n50.0%&quot;
+    },
+    {
+      &quot;input&quot;: [
+        1000,
+        0,
+        500
+      ],
+      &quot;pe&quot;: &quot;מכפיל רווח\n—&quot;,
+      &quot;pb&quot;: &quot;מכפיל הון\n2.0x&quot;,
+      &quot;equity_market&quot;: &quot;יחס הון לשווי שוק\n50.0%&quot;
+    },
+    {
+      &quot;input&quot;: [
+        0,
+        100,
+        500
+      ],
+      &quot;pe&quot;: &quot;מכפיל רווח\n—&quot;,
+      &quot;pb&quot;: &quot;מכפיל הון\n—&quot;,
+      &quot;equity_market&quot;: &quot;יחס הון לשווי שוק\n—&quot;
+    },
+    {
+      &quot;input&quot;: [
+        1000,
+        100,
+        0
+      ],
+      &quot;pe&quot;: &quot;מכפיל רווח\n10.0x&quot;,
+      &quot;pb&quot;: &quot;מכפיל הון\n—&quot;,
+      &quot;equity_market&quot;: &quot;יחס הון לשווי שוק\n0.0%&quot;
+    }
+  ]
+}</pre></details><details><summary>kpi_raw_after_post</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;kpi_raw_after_post&quot;,
+  &quot;result&quot;: {
+    &quot;ready&quot;: true,
+    &quot;active&quot;: 862.721,
+    &quot;raw&quot;: &quot;31.12.2025 | רווח תפעולי: 1367.122\n31.12.2025 | הוצאות מימון, נטו: 378.35\n31.12.2025 | מסים על הכנסה: 126.051\n31.12.2025 | תוצאה = 862.721\n31.12.2024 | רווח תפעולי: 1113.895\n31.12.2024 | הוצאות מימון, נטו: 441.802\n31.12.2024 | מסים על הכנסה: -434.863\n31.12.2024 | תוצאה = 1106.956\nהפירוט לעיל מחושב מהמצב הפעיל לאחר פקודות ידניות; מספרי JSON מקוריים אינם מוצגים כדי למנוע סתירה.&quot;
+  }
+}</pre></details><details><summary>import_and_remote_validation</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;import_and_remote_validation&quot;,
+  &quot;result&quot;: [
+    {
+      &quot;case&quot;: &quot;bad_json&quot;,
+      &quot;ready&quot;: true,
+      &quot;import_ok&quot;: false,
+      &quot;syncing&quot;: false,
+      &quot;writes&quot;: 1,
+      &quot;notes&quot;: [],
+      &quot;reviews&quot;: [],
+      &quot;message&quot;: &quot;המצב נדחה בבדיקת תקינות; המצב הפעיל לא הוחלף&quot;
+    },
+    {
+      &quot;case&quot;: &quot;bad_dataset&quot;,
+      &quot;ready&quot;: true,
+      &quot;import_ok&quot;: false,
+      &quot;syncing&quot;: false,
+      &quot;writes&quot;: 1,
+      &quot;notes&quot;: [],
+      &quot;reviews&quot;: [],
+      &quot;message&quot;: &quot;המצב נדחה בבדיקת תקינות; המצב הפעיל לא הוחלף&quot;
+    },
+    {
+      &quot;case&quot;: &quot;bad_amount&quot;,
+      &quot;ready&quot;: true,
+      &quot;import_ok&quot;: false,
+      &quot;syncing&quot;: false,
+      &quot;writes&quot;: 1,
+      &quot;notes&quot;: [],
+      &quot;reviews&quot;: [],
+      &quot;message&quot;: &quot;המצב נדחה בבדיקת תקינות; המצב הפעיל לא הוחלף&quot;
+    },
+    {
+      &quot;case&quot;: &quot;orphan_review&quot;,
+      &quot;ready&quot;: true,
+      &quot;import_ok&quot;: true,
+      &quot;syncing&quot;: false,
+      &quot;writes&quot;: 2,
+      &quot;notes&quot;: [],
+      &quot;reviews&quot;: [
+        {
+          &quot;Key&quot;: &quot;LINK|NOT-A-REAL-TARGET&quot;,
+          &quot;Status&quot;: &quot;טופל&quot;,
+          &quot;Note&quot;: &quot;x&quot;,
+          &quot;At&quot;: &quot;now&quot;
+        }
+      ],
+      &quot;message&quot;: &quot;מסונכרן עם הצוות · 2026-09-29T20:00:00Z&quot;
+    },
+    {
+      &quot;case&quot;: &quot;duplicate_note&quot;,
+      &quot;ready&quot;: true,
+      &quot;import_ok&quot;: false,
+      &quot;syncing&quot;: false,
+      &quot;writes&quot;: 1,
+      &quot;notes&quot;: [],
+      &quot;reviews&quot;: [],
+      &quot;message&quot;: &quot;המצב נדחה בבדיקת תקינות; המצב הפעיל לא הוחלף&quot;
+    },
+    {
+      &quot;case&quot;: &quot;bad_event_key&quot;,
+      &quot;ready&quot;: true,
+      &quot;import_ok&quot;: true,
+      &quot;syncing&quot;: false,
+      &quot;writes&quot;: 2,
+      &quot;notes&quot;: [
+        {
+          &quot;Key&quot;: &quot;balance_110&quot;,
+          &quot;Text&quot;: &quot;different key&quot;,
+          &quot;At&quot;: &quot;now&quot;
+        }
+      ],
+      &quot;reviews&quot;: [],
+      &quot;message&quot;: &quot;מסונכרן עם הצוות · 2026-09-29T20:00:00Z&quot;
+    },
+    {
+      &quot;case&quot;: &quot;empty_snapshot&quot;,
+      &quot;ready&quot;: false,
+      &quot;import_ok&quot;: false,
+      &quot;syncing&quot;: false,
+      &quot;writes&quot;: 1,
+      &quot;notes&quot;: [],
+      &quot;reviews&quot;: [],
+      &quot;message&quot;: &quot;המצב נדחה בבדיקת תקינות; המצב הפעיל לא הוחלף&quot;
+    },
+    {
+      &quot;case&quot;: &quot;bad_snapshot_dataset&quot;,
+      &quot;ready&quot;: true,
+      &quot;import_ok&quot;: true,
+      &quot;syncing&quot;: false,
+      &quot;writes&quot;: 1,
+      &quot;notes&quot;: [
+        {
+          &quot;Key&quot;: &quot;balance_100&quot;,
+          &quot;Text&quot;: &quot;foreign data&quot;,
+          &quot;At&quot;: &quot;now&quot;
+        }
+      ],
+      &quot;reviews&quot;: [],
+      &quot;message&quot;: &quot;מסונכרן עם הצוות · 2026-09-29T20:00:00Z&quot;
+    }
+  ]
+}</pre></details><details><summary>nondelegable_filter_can_fail_silently</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;nondelegable_filter_can_fail_silently&quot;,
+  &quot;result&quot;: {
+    &quot;real_events_after_checkpoint&quot;: 1,
+    &quot;loaded_events&quot;: 0,
+    &quot;ready&quot;: true,
+    &quot;notes&quot;: [],
+    &quot;message&quot;: &quot;מסונכרן עם הצוות · 2026-09-29T20:00:00Z&quot;,
+    &quot;model&quot;: &quot;explicit first-500 local ID filter simulation, not live connector&quot;
+  }
+}</pre></details><details><summary>cashflow_classifications</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;cashflow_classifications&quot;,
+  &quot;result&quot;: [
+    {
+      &quot;flow&quot;: &quot;operating&quot;,
+      &quot;entries&quot;: 1,
+      &quot;ready&quot;: true,
+      &quot;cash&quot;: 2443.0,
+      &quot;op&quot;: 1570.0,
+      &quot;inv&quot;: -362.0,
+      &quot;fin&quot;: -360.0,
+      &quot;synthetic&quot;: [],
+      &quot;logs&quot;: []
+    },
+    {
+      &quot;flow&quot;: &quot;investing&quot;,
+      &quot;entries&quot;: 1,
+      &quot;ready&quot;: true,
+      &quot;cash&quot;: 2443.0,
+      &quot;op&quot;: 1580.0,
+      &quot;inv&quot;: -372.0,
+      &quot;fin&quot;: -360.0,
+      &quot;synthetic&quot;: [
+        &quot;cf_manual_inv&quot;
+      ],
+      &quot;logs&quot;: []
+    },
+    {
+      &quot;flow&quot;: &quot;financing&quot;,
+      &quot;entries&quot;: 1,
+      &quot;ready&quot;: true,
+      &quot;cash&quot;: 2443.0,
+      &quot;op&quot;: 1580.0,
+      &quot;inv&quot;: -362.0,
+      &quot;fin&quot;: -370.0,
+      &quot;synthetic&quot;: [
+        &quot;cf_manual_fin&quot;
+      ],
+      &quot;logs&quot;: []
+    },
+    {
+      &quot;flow&quot;: &quot;noncash&quot;,
+      &quot;entries&quot;: 0,
+      &quot;ready&quot;: true,
+      &quot;cash&quot;: 2453.0,
+      &quot;op&quot;: 1580.0,
+      &quot;inv&quot;: -362.0,
+      &quot;fin&quot;: -360.0,
+      &quot;synthetic&quot;: [],
+      &quot;logs&quot;: [
+        [
+          &quot;פקודה המשנה מזומן חייבת סיווג פעילות&quot;,
+          &quot;Error&quot;
+        ]
+      ]
+    }
+  ]
+}</pre></details><details><summary>ordinary_concurrent_edits</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;ordinary_concurrent_edits&quot;,
+  &quot;result&quot;: {
+    &quot;notes&quot;: [
+      {
+        &quot;Key&quot;: &quot;balance_100&quot;,
+        &quot;Text&quot;: &quot;C&quot;,
+        &quot;At&quot;: &quot;now&quot;
+      },
+      {
+        &quot;Key&quot;: &quot;balance_110&quot;,
+        &quot;Text&quot;: &quot;B&quot;,
+        &quot;At&quot;: &quot;now&quot;
+      }
+    ],
+    &quot;ready&quot;: true
+  }
+}</pre></details><details><summary>failed_write</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;failed_write&quot;,
+  &quot;result&quot;: {
+    &quot;notes&quot;: [],
+    &quot;syncing&quot;: false,
+    &quot;records&quot;: 1,
+    &quot;message&quot;: &quot;השינוי לא נשמר: simulated network failure&quot;
+  }
+}</pre></details><details><summary>source_data_integrity</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;source_data_integrity&quot;,
+  &quot;result&quot;: {
+    &quot;drill_json_exact&quot;: true,
+    &quot;documents_json_exact&quot;: true,
+    &quot;original_js_identical&quot;: true,
+    &quot;loaders_unchanged&quot;: true
+  }
+}</pre></details><details><summary>record_alias_scope_all_formulas</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;record_alias_scope_all_formulas&quot;,
+  &quot;result&quot;: [
+    {
+      &quot;control&quot;: &quot;V97Drivers&quot;,
+      &quot;property&quot;: &quot;Items&quot;,
+      &quot;unbound_alias_references&quot;: [
+        &quot;d.Current&quot;,
+        &quot;d.Prior&quot;,
+        &quot;d.Section&quot;
+      ]
+    },
+    {
+      &quot;control&quot;: &quot;V97ExportView&quot;,
+      &quot;property&quot;: &quot;OnSelect&quot;,
+      &quot;unbound_alias_references&quot;: [
+        &quot;e.DocId&quot;
+      ]
+    }
+  ]
+}</pre></details><details><summary>drill_filter_source_parity</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;drill_filter_source_parity&quot;,
+  &quot;result&quot;: {
+    &quot;cases&quot;: 176,
+    &quot;mismatches&quot;: 88,
+    &quot;examples&quot;: [
+      {
+        &quot;section&quot;: &quot;balance_100&quot;,
+        &quot;amount&quot;: 0,
+        &quot;pct&quot;: 10,
+        &quot;v8&quot;: 5,
+        &quot;source&quot;: 1
+      },
+      {
+        &quot;section&quot;: &quot;balance_110&quot;,
+        &quot;amount&quot;: 50,
+        &quot;pct&quot;: 10,
+        &quot;v8&quot;: 0,
+        &quot;source&quot;: 1
+      },
+      {
+        &quot;section&quot;: &quot;balance_120&quot;,
+        &quot;amount&quot;: 50,
+        &quot;pct&quot;: 10,
+        &quot;v8&quot;: 0,
+        &quot;source&quot;: 1
+      },
+      {
+        &quot;section&quot;: &quot;balance_130&quot;,
+        &quot;amount&quot;: 0,
+        &quot;pct&quot;: 10,
+        &quot;v8&quot;: 0,
+        &quot;source&quot;: 2
+      },
+      {
+        &quot;section&quot;: &quot;balance_130&quot;,
+        &quot;amount&quot;: 50,
+        &quot;pct&quot;: 10,
+        &quot;v8&quot;: 0,
+        &quot;source&quot;: 2
+      },
+      {
+        &quot;section&quot;: &quot;balance_200&quot;,
+        &quot;amount&quot;: 0,
+        &quot;pct&quot;: 10,
+        &quot;v8&quot;: 1,
+        &quot;source&quot;: 2
+      },
+      {
+        &quot;section&quot;: &quot;balance_200&quot;,
+        &quot;amount&quot;: 50,
+        &quot;pct&quot;: 10,
+        &quot;v8&quot;: 0,
+        &quot;source&quot;: 2
+      },
+      {
+        &quot;section&quot;: &quot;balance_220&quot;,
+        &quot;amount&quot;: 0,
+        &quot;pct&quot;: 10,
+        &quot;v8&quot;: 0,
+        &quot;source&quot;: 1
+      },
+      {
+        &quot;section&quot;: &quot;balance_220&quot;,
+        &quot;amount&quot;: 50,
+        &quot;pct&quot;: 10,
+        &quot;v8&quot;: 0,
+        &quot;source&quot;: 1
+      },
+      {
+        &quot;section&quot;: &quot;balance_230&quot;,
+        &quot;amount&quot;: 0,
+        &quot;pct&quot;: 10,
+        &quot;v8&quot;: 1,
+        &quot;source&quot;: 2
+      },
+      {
+        &quot;section&quot;: &quot;balance_230&quot;,
+        &quot;amount&quot;: 50,
+        &quot;pct&quot;: 10,
+        &quot;v8&quot;: 0,
+        &quot;source&quot;: 2
+      },
+      {
+        &quot;section&quot;: &quot;balance_300&quot;,
+        &quot;amount&quot;: 0,
+        &quot;pct&quot;: 10,
+        &quot;v8&quot;: 3,
+        &quot;source&quot;: 1
+      },
+      {
+        &quot;section&quot;: &quot;balance_300&quot;,
+        &quot;amount&quot;: 50,
+        &quot;pct&quot;: 10,
+        &quot;v8&quot;: 0,
+        &quot;source&quot;: 1
+      },
+      {
+        &quot;section&quot;: &quot;balance_310&quot;,
+        &quot;amount&quot;: 50,
+        &quot;pct&quot;: 0,
+        &quot;v8&quot;: 6,
+        &quot;source&quot;: 9
+      },
+      {
+        &quot;section&quot;: &quot;balance_310&quot;,
+        &quot;amount&quot;: 0,
+        &quot;pct&quot;: 10,
+        &quot;v8&quot;: 8,
+        &quot;source&quot;: 5
+      },
+      {
+        &quot;section&quot;: &quot;balance_310&quot;,
+        &quot;amount&quot;: 50,
+        &quot;pct&quot;: 10,
+        &quot;v8&quot;: 6,
+        &quot;source&quot;: 9
+      },
+      {
+        &quot;section&quot;: &quot;balance_330&quot;,
+        &quot;amount&quot;: 50,
+        &quot;pct&quot;: 0,
+        &quot;v8&quot;: 0,
+        &quot;source&quot;: 1
+      },
+      {
+        &quot;section&quot;: &quot;balance_330&quot;,
+        &quot;amount&quot;: 0,
+        &quot;pct&quot;: 10,
+        &quot;v8&quot;: 2,
+        &quot;source&quot;: 1
+      },
+      {
+        &quot;section&quot;: &quot;balance_330&quot;,
+        &quot;amount&quot;: 50,
+        &quot;pct&quot;: 10,
+        &quot;v8&quot;: 0,
+        &quot;source&quot;: 1
+      },
+      {
+        &quot;section&quot;: &quot;balance_350&quot;,
+        &quot;amount&quot;: 0,
+        &quot;pct&quot;: 10,
+        &quot;v8&quot;: 4,
+        &quot;source&quot;: 2
+      }
+    ]
+  }
+}</pre></details><details><summary>all_gallery_items</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;all_gallery_items&quot;,
+  &quot;result&quot;: [
+    {
+      &quot;control&quot;: &quot;V97Main&quot;,
+      &quot;count&quot;: 57
+    },
+    {
+      &quot;control&quot;: &quot;V97Comparison&quot;,
+      &quot;count&quot;: 8
+    },
+    {
+      &quot;control&quot;: &quot;V97Drill&quot;,
+      &quot;count&quot;: 5
+    },
+    {
+      &quot;control&quot;: &quot;V97DrillManual&quot;,
+      &quot;count&quot;: 0
+    },
+    {
+      &quot;control&quot;: &quot;V97Notes&quot;,
+      &quot;count&quot;: 0
+    },
+    {
+      &quot;control&quot;: &quot;V97KpiParts&quot;,
+      &quot;count&quot;: 0
+    },
+    {
+      &quot;control&quot;: &quot;V97Analysis&quot;,
+      &quot;count&quot;: 10
+    },
+    {
+      &quot;control&quot;: &quot;V97Issues&quot;,
+      &quot;count&quot;: 8
+    },
+    {
+      &quot;control&quot;: &quot;V97Insights&quot;,
+      &quot;count&quot;: 5
+    },
+    {
+      &quot;control&quot;: &quot;V97Fx&quot;,
+      &quot;count&quot;: 0
+    },
+    {
+      &quot;control&quot;: &quot;V97DebitOptions&quot;,
+      &quot;count&quot;: 46
+    },
+    {
+      &quot;control&quot;: &quot;V97CreditOptions&quot;,
+      &quot;count&quot;: 46
+    },
+    {
+      &quot;control&quot;: &quot;V97Journal&quot;,
+      &quot;count&quot;: 0
+    },
+    {
+      &quot;control&quot;: &quot;V97SourceEntries&quot;,
+      &quot;count&quot;: 92
+    },
+    {
+      &quot;control&quot;: &quot;V97Evidence&quot;,
+      &quot;count&quot;: 73
+    },
+    {
+      &quot;control&quot;: &quot;V97Documents&quot;,
+      &quot;count&quot;: 18
+    },
+    {
+      &quot;control&quot;: &quot;V97Links&quot;,
+      &quot;count&quot;: 0
+    },
+    {
+      &quot;control&quot;: &quot;V97Questions&quot;,
+      &quot;count&quot;: 10
+    },
+    {
+      &quot;control&quot;: &quot;V97EvidenceDetails&quot;,
+      &quot;count&quot;: 0
+    },
+    {
+      &quot;control&quot;: &quot;V97Charts&quot;,
+      &quot;count&quot;: 7
+    },
+    {
+      &quot;control&quot;: &quot;V97Drivers&quot;,
+      &quot;error&quot;: &quot;UNBOUND d&quot;
+    },
+    {
+      &quot;control&quot;: &quot;V97LinkTargets&quot;,
+      &quot;count&quot;: 210
+    }
+  ]
+}</pre></details><details><summary>geometry_all_pages_and_modals</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;geometry_all_pages_and_modals&quot;,
+  &quot;result&quot;: {
+    &quot;evaluated_visible_controls&quot;: 23162,
+    &quot;issues&quot;: 202,
+    &quot;desktop_issues&quot;: 0,
+    &quot;examples&quot;: [
+      {
+        &quot;screen&quot;: [
+          800,
+          600
+        ],
+        &quot;page&quot;: &quot;balance&quot;,
+        &quot;modal&quot;: &quot;&quot;,
+        &quot;control&quot;: &quot;V97Main&quot;,
+        &quot;X&quot;: 12.0,
+        &quot;Y&quot;: 548.0,
+        &quot;Width&quot;: 772.0,
+        &quot;Height&quot;: 80.0
+      },
+      {
+        &quot;screen&quot;: [
+          800,
+          600
+        ],
+        &quot;page&quot;: &quot;balance&quot;,
+        &quot;modal&quot;: &quot;drill&quot;,
+        &quot;control&quot;: &quot;V97Main&quot;,
+        &quot;X&quot;: 12.0,
+        &quot;Y&quot;: 548.0,
+        &quot;Width&quot;: 772.0,
+        &quot;Height&quot;: 80.0
+      },
+      {
+        &quot;screen&quot;: [
+          800,
+          600
+        ],
+        &quot;page&quot;: &quot;balance&quot;,
+        &quot;modal&quot;: &quot;kpi&quot;,
+        &quot;control&quot;: &quot;V97Main&quot;,
+        &quot;X&quot;: 12.0,
+        &quot;Y&quot;: 548.0,
+        &quot;Width&quot;: 772.0,
+        &quot;Height&quot;: 80.0
+      },
+      {
+        &quot;screen&quot;: [
+          800,
+          600
+        ],
+        &quot;page&quot;: &quot;balance&quot;,
+        &quot;modal&quot;: &quot;exec&quot;,
+        &quot;control&quot;: &quot;V97Main&quot;,
+        &quot;X&quot;: 12.0,
+        &quot;Y&quot;: 548.0,
+        &quot;Width&quot;: 772.0,
+        &quot;Height&quot;: 80.0
+      },
+      {
+        &quot;screen&quot;: [
+          800,
+          600
+        ],
+        &quot;page&quot;: &quot;balance&quot;,
+        &quot;modal&quot;: &quot;exceptions&quot;,
+        &quot;control&quot;: &quot;V97Main&quot;,
+        &quot;X&quot;: 12.0,
+        &quot;Y&quot;: 548.0,
+        &quot;Width&quot;: 772.0,
+        &quot;Height&quot;: 80.0
+      },
+      {
+        &quot;screen&quot;: [
+          800,
+          600
+        ],
+        &quot;page&quot;: &quot;balance&quot;,
+        &quot;modal&quot;: &quot;unchanged&quot;,
+        &quot;control&quot;: &quot;V97Main&quot;,
+        &quot;X&quot;: 12.0,
+        &quot;Y&quot;: 548.0,
+        &quot;Width&quot;: 772.0,
+        &quot;Height&quot;: 80.0
+      },
+      {
+        &quot;screen&quot;: [
+          800,
+          600
+        ],
+        &quot;page&quot;: &quot;balance&quot;,
+        &quot;modal&quot;: &quot;fx&quot;,
+        &quot;control&quot;: &quot;V97Main&quot;,
+        &quot;X&quot;: 12.0,
+        &quot;Y&quot;: 548.0,
+        &quot;Width&quot;: 772.0,
+        &quot;Height&quot;: 80.0
+      },
+      {
+        &quot;screen&quot;: [
+          800,
+          600
+        ],
+        &quot;page&quot;: &quot;balance&quot;,
+        &quot;modal&quot;: &quot;errors&quot;,
+        &quot;control&quot;: &quot;V97Main&quot;,
+        &quot;X&quot;: 12.0,
+        &quot;Y&quot;: 548.0,
+        &quot;Width&quot;: 772.0,
+        &quot;Height&quot;: 80.0
+      },
+      {
+        &quot;screen&quot;: [
+          800,
+          600
+        ],
+        &quot;page&quot;: &quot;balance&quot;,
+        &quot;modal&quot;: &quot;insights&quot;,
+        &quot;control&quot;: &quot;V97Main&quot;,
+        &quot;X&quot;: 12.0,
+        &quot;Y&quot;: 548.0,
+        &quot;Width&quot;: 772.0,
+        &quot;Height&quot;: 80.0
+      },
+      {
+        &quot;screen&quot;: [
+          800,
+          600
+        ],
+        &quot;page&quot;: &quot;balance&quot;,
+        &quot;modal&quot;: &quot;additional&quot;,
+        &quot;control&quot;: &quot;V97Main&quot;,
+        &quot;X&quot;: 12.0,
+        &quot;Y&quot;: 548.0,
+        &quot;Width&quot;: 772.0,
+        &quot;Height&quot;: 80.0
+      },
+      {
+        &quot;screen&quot;: [
+          800,
+          600
+        ],
+        &quot;page&quot;: &quot;balance&quot;,
+        &quot;modal&quot;: &quot;notes&quot;,
+        &quot;control&quot;: &quot;V97Main&quot;,
+        &quot;X&quot;: 12.0,
+        &quot;Y&quot;: 548.0,
+        &quot;Width&quot;: 772.0,
+        &quot;Height&quot;: 80.0
+      },
+      {
+        &quot;screen&quot;: [
+          800,
+          600
+        ],
+        &quot;page&quot;: &quot;balance&quot;,
+        &quot;modal&quot;: &quot;evidence&quot;,
+        &quot;control&quot;: &quot;V97Main&quot;,
+        &quot;X&quot;: 12.0,
+        &quot;Y&quot;: 548.0,
+        &quot;Width&quot;: 772.0,
+        &quot;Height&quot;: 80.0
+      }
+    ],
+    &quot;affected_controls&quot;: [
+      &quot;V97AuditChecks&quot;,
+      &quot;V97EvidenceBaseNote&quot;,
+      &quot;V97Main&quot;,
+      &quot;V97PriceEarnings&quot;,
+      &quot;V97PriceToBook&quot;,
+      &quot;V97RestoreSettings&quot;,
+      &quot;V97SaveSettings&quot;,
+      &quot;V97SettingsText&quot;,
+      &quot;V97SourceMetadata&quot;
+    ]
+  }
+}</pre></details><details><summary>profit_algorithm_after_isolating_binding_defect</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;profit_algorithm_after_isolating_binding_defect&quot;,
+  &quot;result&quot;: [
+    {
+      &quot;kind&quot;: &quot;gross&quot;,
+      &quot;equal_after_test_only_alias_repair&quot;: true,
+      &quot;got&quot;: [
+        [
+          &quot;7070013&quot;,
+          -507.246
+        ],
+        [
+          &quot;7070100&quot;,
+          -500.484
+        ],
+        [
+          &quot;7070100&quot;,
+          -88.743
+        ],
+        [
+          &quot;7000024&quot;,
+          -59.703
+        ],
+        [
+          &quot;70600000&quot;,
+          40.542
+        ]
+      ],
+      &quot;expected&quot;: [
+        [
+          &quot;7070013&quot;,
+          -507.246
+        ],
+        [
+          &quot;7070100&quot;,
+          -500.484
+        ],
+        [
+          &quot;7070100&quot;,
+          -88.743
+        ],
+        [
+          &quot;7000024&quot;,
+          -59.703
+        ],
+        [
+          &quot;70600000&quot;,
+          40.542
+        ]
+      ]
+    },
+    {
+      &quot;kind&quot;: &quot;operating&quot;,
+      &quot;equal_after_test_only_alias_repair&quot;: true,
+      &quot;got&quot;: [
+        [
+          &quot;7070013&quot;,
+          -507.246
+        ],
+        [
+          &quot;7070100&quot;,
+          -500.484
+        ],
+        [
+          &quot;9310002&quot;,
+          298.791
+        ],
+        [
+          &quot;9370017&quot;,
+          -244.452
+        ],
+        [
+          &quot;9100001&quot;,
+          239.321
+        ]
+      ],
+      &quot;expected&quot;: [
+        [
+          &quot;7070013&quot;,
+          -507.246
+        ],
+        [
+          &quot;7070100&quot;,
+          -500.484
+        ],
+        [
+          &quot;9310002&quot;,
+          298.791
+        ],
+        [
+          &quot;9370017&quot;,
+          -244.452
+        ],
+        [
+          &quot;9100001&quot;,
+          239.321
+        ]
+      ]
+    },
+    {
+      &quot;kind&quot;: &quot;net&quot;,
+      &quot;equal_after_test_only_alias_repair&quot;: true,
+      &quot;got&quot;: [
+        [
+          &quot;7070013&quot;,
+          -507.246
+        ],
+        [
+          &quot;7070100&quot;,
+          -500.484
+        ],
+        [
+          &quot;9820003&quot;,
+          -436.032
+        ],
+        [
+          &quot;9310002&quot;,
+          298.791
+        ],
+        [
+          &quot;9370017&quot;,
+          -244.452
+        ]
+      ],
+      &quot;expected&quot;: [
+        [
+          &quot;7070013&quot;,
+          -507.246
+        ],
+        [
+          &quot;7070100&quot;,
+          -500.484
+        ],
+        [
+          &quot;9820003&quot;,
+          -436.032
+        ],
+        [
+          &quot;9310002&quot;,
+          298.791
+        ],
+        [
+          &quot;9370017&quot;,
+          -244.452
+        ]
+      ]
+    }
+  ]
+}</pre></details><details><summary>evidence_population</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;evidence_population&quot;,
+  &quot;result&quot;: {
+    &quot;v8_matches&quot;: 73,
+    &quot;original_grouped_targets&quot;: null,
+    &quot;unmatched_items&quot;: 40,
+    &quot;group_checks&quot;: 7,
+    &quot;extracted_docs&quot;: 18,
+    &quot;link_targets&quot;: 210
+  }
+}</pre></details><details><summary>checkpoint_payload_limit</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;checkpoint_payload_limit&quot;,
+  &quot;result&quot;: {
+    &quot;length&quot;: 73983,
+    &quot;checkpoint_needed&quot;: false,
+    &quot;ready&quot;: true,
+    &quot;message&quot;: &quot;המצב המשותף גדול מדי לנקודת שחזור אחת; השמירה השוטפת נשארה פעילה&quot;,
+    &quot;snapshots&quot;: 1
+  }
+}</pre></details><details><summary>export_tabs_newlines</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;export_tabs_newlines&quot;,
+  &quot;result&quot;: {
+    &quot;line_widths&quot;: [
+      7,
+      1,
+      8
+    ],
+    &quot;text&quot;: &quot;תיאור\tאסמכתא\tחובה\tזכות\tסכום\tסיווג תזרים\tתאריך\nline one\nline two\tTAB\tR\tמזומנים בשקלים\tלקוחות פתוחים בארץ\t10\toperating\tnow&quot;
+  }
+}</pre></details><details><summary>section_only_link_rejected</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;section_only_link_rejected&quot;,
+  &quot;result&quot;: {
+    &quot;link_count&quot;: 0,
+    &quot;notifications&quot;: [
+      [
+        &quot;בחר מסמך וחשבון Drill-down תקינים&quot;,
+        &quot;Error&quot;
+      ]
+    ]
+  }
+}</pre></details><details><summary>comparison_copy</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;comparison_copy&quot;,
+  &quot;result&quot;: {
+    &quot;display_rows&quot;: 8,
+    &quot;export_data_rows&quot;: 0
+  }
+}</pre></details><details><summary>source_metadata_json</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;source_metadata_json&quot;,
+  &quot;result&quot;: {
+    &quot;json_valid&quot;: true
+  }
+}</pre></details><details><summary>evidence_details_all_73</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;evidence_details_all_73&quot;,
+  &quot;result&quot;: {
+    &quot;tested&quot;: 73,
+    &quot;errors&quot;: []
+  }
+}</pre></details><details><summary>additional_export_population</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;additional_export_population&quot;,
+  &quot;result&quot;: {
+    &quot;shown_source_entries&quot;: 92,
+    &quot;export_lines&quot;: 1
+  }
+}</pre></details><details><summary>all_15_kpi_details</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;all_15_kpi_details&quot;,
+  &quot;result&quot;: [
+    {
+      &quot;id&quot;: &quot;ratios_R01&quot;,
+      &quot;parts&quot;: 6,
+      &quot;raw_available&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;ratios_R02&quot;,
+      &quot;parts&quot;: 6,
+      &quot;raw_available&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;ratios_R03&quot;,
+      &quot;parts&quot;: 6,
+      &quot;raw_available&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;ratios_R04&quot;,
+      &quot;parts&quot;: 6,
+      &quot;raw_available&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;ratios_R05&quot;,
+      &quot;parts&quot;: 6,
+      &quot;raw_available&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;ratios_R06&quot;,
+      &quot;parts&quot;: 6,
+      &quot;raw_available&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;ratios_R07&quot;,
+      &quot;parts&quot;: 8,
+      &quot;raw_available&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;ratios_R08&quot;,
+      &quot;parts&quot;: 6,
+      &quot;raw_available&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;ratios_R09&quot;,
+      &quot;parts&quot;: 6,
+      &quot;raw_available&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;ratios_R10&quot;,
+      &quot;parts&quot;: 6,
+      &quot;raw_available&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;ratios_R11&quot;,
+      &quot;parts&quot;: 12,
+      &quot;raw_available&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;ratios_R12&quot;,
+      &quot;parts&quot;: 12,
+      &quot;raw_available&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;ratios_R13&quot;,
+      &quot;parts&quot;: 12,
+      &quot;raw_available&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;ratios_R14&quot;,
+      &quot;parts&quot;: 6,
+      &quot;raw_available&quot;: true
+    },
+    {
+      &quot;id&quot;: &quot;ratios_R15&quot;,
+      &quot;parts&quot;: 6,
+      &quot;raw_available&quot;: true
+    }
+  ]
+}</pre></details><details><summary>concurrent_restore_race</summary><pre dir="ltr">{
+  &quot;test&quot;: &quot;concurrent_restore_race&quot;,
+  &quot;result&quot;: {
+    &quot;expected_notes&quot;: {
+      &quot;balance_100&quot;: &quot;RESTORED&quot;,
+      &quot;balance_110&quot;: &quot;NEW EVENT 101&quot;
+    },
+    &quot;actual_notes&quot;: {
+      &quot;balance_100&quot;: &quot;OLD&quot;,
+      &quot;balance_110&quot;: &quot;NEW EVENT 101&quot;
+    },
+    &quot;snapshots&quot;: [
+      [
+        102,
+        1005
+      ],
+      [
+        103,
+        1010.0
+      ]
+    ],
+    &quot;ready&quot;: true
+  }
+}</pre></details></main></body></html>

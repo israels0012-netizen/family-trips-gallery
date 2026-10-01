@@ -1,0 +1,1846 @@
+250
+### V97Recalculate [ModernText@1.0.0] parent=None
+  Text: =""
+  X: =0
+  Y: =0
+  Width: =1
+  Height: =1
+  Visible: =false
+  OnSelect: =ClearCollect(colV97Rows,ForAll(colV97Base As r,Patch(r,{Current:If(IsBlank(r.Base),Blank(),r.Base+Sum(Filter(colV97Effects,Target=r.RowId) As w,w.Weight*(Sum(Filter(colV97Entries,Debit=w.Source),Amount)-Sum(Filter(colV97Entries,Credit=w.Source),Amount))))})));
+Set(varV97NetDelta,-Sum(Filter(colV97Rows,RowId="pnl_r289"),Current-Base));
+Set(varV97OpCash,Sum(Filter(colV97Entries,Flow="operating"),CashDelta));
+Set(varV97InvCash,Sum(Filter(colV97Entries,Flow="investing"),CashDelta));
+Set(varV97FinCash,Sum(Filter(colV97Entries,Flow="financing"),CashDelta));
+UpdateIf(colV97Rows,RowId="cf_net_profit",{Current:Base+varV97NetDelta});
+UpdateIf(colV97Rows,RowId="cf_adjustments",{Current:Base+varV97OpCash-varV97NetDelta});
+UpdateIf(colV97Rows,RowId="cf_op_total" || RowId="cf_op_header",{Current:Base+varV97OpCash});
+UpdateIf(colV97Rows,RowId="cf_inv_total" || RowId="cf_inv_header",{Current:Base+varV97InvCash});
+UpdateIf(colV97Rows,RowId="cf_fin_total" || RowId="cf_fin_header",{Current:Base+varV97FinCash});
+UpdateIf(colV97Rows,RowId="cf_change" || RowId="cf_close",{Current:Base+varV97OpCash+varV97InvCash+varV97FinCash});
+If(varV97InvCash<>0,Collect(colV97Rows,Patch(LookUp(colV97Base,RowId="cf_inv_total"),{RowId:"cf_manual_inv",Name:"השפעת פקודות ידניות",Kind:"item",Base:0,Prior:0,Current:varV97InvCash,Order:LookUp(colV97Base,RowId="cf_inv_total",Order)-0.5,Depth:1})));
+If(varV97FinCash<>0,Collect(colV97Rows,Patch(LookUp(colV97Base,RowId="cf_fin_total"),{RowId:"cf_manual_fin",Name:"השפעת פק...[+4749]
+### V97LoadShared [ModernText@1.0.0] parent=None
+  Text: =""
+  X: =0
+  Y: =0
+  Width: =1
+  Height: =1
+  Visible: =false
+  OnSelect: =Set(varV97Syncing,true);
+Set(varV97LoadOk,false);
+Set(varV97CheckpointNeeded,false);
+Set(varV97SaveMessage,"טוען מצב משותף מ-SharePoint...");
+IfError(
+  Refresh(DashboardPOC_Data);
+  Set(varV97Snapshot8,First(SortByColumns(Filter(DashboardPOC_Data,field_1=varV97CompanyID && field_2=varV97PeriodID && field_3="V97Snapshot8" && field_14=varV97Dataset),"field_13",SortOrder.Descending,"ID",SortOrder.Descending)));
+  Set(varV97Snapshot7,If(IsBlank(varV97Snapshot8.ID),First(SortByColumns(Filter(DashboardPOC_Data,field_1=varV97CompanyID && field_2=varV97PeriodID && field_3="V97Snapshot7" && field_14=varV97Dataset),"ID",SortOrder.Descending)),Blank()));
+  Set(varV97Snapshot,If(!IsBlank(varV97Snapshot8.ID),varV97Snapshot8,varV97Snapshot7));
+  Set(varV97SnapshotId,Coalesce(varV97Snapshot.ID,0));
+  Set(varV97SnapshotPriority,Coalesce(varV97Snapshot.field_13,0));
+  Set(varV97SnapshotType,Coalesce(varV97Snapshot.field_3,""));
+  If(varV97SnapshotId>0,
+    Set(varV97SharedBase,ParseJSON(varV97Snapshot.AuditNote));
+    Set(varV97ThroughEventId,Coalesce(IfError(Value(varV97SharedBase.ThroughEventId),Blank()),varV97SnapshotId)),
+    ClearCollect(colV97LegacyEntries,Filter(DashboardPOC_Data,field_1=varV97CompanyID && field_2=varV97PeriodID && field_3="V97ManualEntry"));
+    ClearCollect(colV97LegacyNotes,Filter(DashboardPOC_Data,field_1=varV97CompanyID && field_2=varV97PeriodID && field_3="V97Note"));
+    ClearCollect(colV97LegacyReviews,Filter(DashboardPOC_Data,field_1=varV97CompanyID && field...[+9214]
+### V97Checkpoint [ModernText@1.0.0] parent=None
+  Text: =""
+  X: =0
+  Y: =0
+  Width: =1
+  Height: =1
+  Visible: =false
+  OnSelect: =If(varV97RemoteReady && !varV97Syncing && varV97CheckpointNeeded,
+  Set(varV97CheckpointPriority,varV97MaxEventId*10);
+  Set(varV97CheckpointPayload,JSON({Version:2,Dataset:varV97Dataset,ThroughEventId:varV97MaxEventId,Entries:colV97Entries,Notes:colV97Notes,Reviews:colV97Reviews,Links:colV97Links,Urls:colV97Urls,History:LastN(colV97History,200),Materiality:varV97Materiality,Market:varV97Market},JSONFormat.Compact));
+  If(Len(varV97CheckpointPayload)>55000,
+    Set(varV97CheckpointNeeded,false);Set(varV97SaveMessage,"המצב המשותף גדול מדי לנקודת שחזור אחת; השמירה השוטפת נשארה פעילה"),
+    IfError(
+      Refresh(DashboardPOC_Data);
+      Set(varV97LatestSnapshotNow,First(SortByColumns(Filter(DashboardPOC_Data,field_1=varV97CompanyID && field_2=varV97PeriodID && field_3="V97Snapshot8" && field_14=varV97Dataset),"field_13",SortOrder.Descending,"ID",SortOrder.Descending)));
+      If(Coalesce(varV97LatestSnapshotNow.field_13,-1)>=varV97CheckpointPriority,
+        Set(varV97SnapshotId,Coalesce(varV97LatestSnapshotNow.ID,varV97SnapshotId));Set(varV97SnapshotPriority,Coalesce(varV97LatestSnapshotNow.field_13,varV97SnapshotPriority));Set(varV97CheckpointNeeded,false),
+        Set(varV97CheckpointRecord,Patch(DashboardPOC_Data,Defaults(DashboardPOC_Data),{Title:"V97-SNAPSHOT8-"&Text(GUID()),field_1:varV97CompanyID,field_2:varV97PeriodID,field_3:"V97Snapshot8",field_13:varV97CheckpointPriority,field_14:varV97Dataset,AuditNote:varV97CheckpointPayload}));Set(varV97SnapshotId,varV97Checkpo...[+215]
+### V97PersistAll [ModernText@1.0.0] parent=None
+  Text: =""
+  X: =0
+  Y: =0
+  Width: =1
+  Height: =1
+  Visible: =false
+  OnSelect: =If(varV97RemoteReady && !varV97Syncing,Set(varV97Syncing,true);Set(varV97EventEntity,"Settings");Set(varV97EventKey,"settings");Set(varV97EventDeleted,false);Set(varV97EventPayload,JSON({Materiality:varV97Materiality,Market:varV97Market},JSONFormat.Compact));Select(V97WriteEvent),Notify("המתן לסיום הסנכרון או רענן מהצוות",NotificationType.Warning))
+### V97Initialize [ModernText@1.0.0] parent=None
+  Text: =""
+  X: =0
+  Y: =0
+  Width: =1
+  Height: =1
+  Visible: =false
+  OnSelect: =ClearCollect(colV97BaseEdges,colV97Edges);ClearCollect(colV97Entries,Table({Id:"",Debit:"",Credit:"",Amount:0.0,Description:"",Reference:"",Flow:"",CashDelta:0.0,At:""}));Clear(colV97Entries);ClearCollect(colV97Notes,Table({Key:"",Text:"",At:""}));Clear(colV97Notes);ClearCollect(colV97Reviews,Table({Key:"",Status:"",Note:"",At:""}));Clear(colV97Reviews);ClearCollect(colV97Links,Table({Key:"",DocId:"",Section:"",Account:"",Name:""}));Clear(colV97Links);ClearCollect(colV97Urls,Table({DocId:"",Url:""}));Clear(colV97Urls);ClearCollect(colV97History,Table({Id:"",Key:"",Action:"",At:"",User:""}));Clear(colV97History);ClearCollect(colV97Closed,Table({RowId:""}));Clear(colV97Closed);ClearCollect(colV97Store,Table({Payload:""}));Clear(colV97Store);Set(varV97Ready,true);Set(varV97RemoteReady,false);Set(varV97EntryFilter,"all");Set(varV97ExceptionType,"all");Set(varV97BackModal,"");Set(varV97SearchEverywhere,false);Set(varV97Materiality,50);Set(varV97Market,0);Set(varV97ImportMode,"load");Set(varV97EvidenceDetail,"");Set(varV97DetailText,"");Set(varV97Starting,false);Set(varV97Page,"balance");Set(varV97Modal,"");Set(varV97Section,"");Set(varV97NoteKey,"");Set(varV97EvidenceKey,"");Set(varV97Doc,"");Set(varV97LinkAccount,"");Set(varV97CheckpointNeeded,false);Set(varV97CheckpointPriority,0);Set(varV97SnapshotPriority,0);Set(varV97ThroughEventId,0);Set(varV97MaxEventId,0);Set(varV97SnapshotId,0);Set(varV97Debit,"");Set(varV97Credit,"");Set(varV97Flow,"operating");Set(varV97Sort,"Order");S...[+558]
+### V97SaveLocal [ModernText@1.0.0] parent=None
+  Text: =""
+  X: =0
+  Y: =0
+  Width: =1
+  Height: =1
+  Visible: =false
+  OnSelect: =Select(V97PersistAll)
+### V97ImportState [ModernText@1.0.0] parent=None
+  Text: =""
+  X: =0
+  Y: =0
+  Width: =1
+  Height: =1
+  Visible: =false
+  OnSelect: =Set(varV97ImportOk,true);
+IfError(Set(varV97Incoming,ParseJSON(varV97ImportText));true,Set(varV97ImportOk,false);Notify("JSON לא תקין",NotificationType.Error);false);
+If(varV97ImportOk,IfError(If(IsBlank(varV97Incoming.Entries) || IsBlank(varV97Incoming.Notes) || IsBlank(varV97Incoming.Reviews) || IsBlank(varV97Incoming.Links) || IsBlank(varV97Incoming.Urls) || IsBlank(varV97Incoming.History) || !(Value(varV97Incoming.Version) in [1,2]) || Text(varV97Incoming.Dataset)<>varV97Dataset,Set(varV97ImportOk,false));true,Set(varV97ImportOk,false);false));
+If(varV97ImportOk,IfError(ClearCollect(colV97StageEntries,ForAll(Table(varV97Incoming.Entries) As j,{Id:Text(j.Value.Id),Debit:Text(j.Value.Debit),Credit:Text(j.Value.Credit),Amount:Value(j.Value.Amount),Description:Text(j.Value.Description),Reference:Text(j.Value.Reference),Flow:Text(j.Value.Flow),CashDelta:Value(j.Value.CashDelta),At:Text(j.Value.At)}));true,Set(varV97ImportOk,false);false));
+If(varV97ImportOk,IfError(ClearCollect(colV97StageNotes,ForAll(Table(varV97Incoming.Notes) As j,{Key:Text(j.Value.Key),Text:Text(j.Value.Text),At:Text(j.Value.At)}));true,Set(varV97ImportOk,false);false));
+If(varV97ImportOk,IfError(ClearCollect(colV97StageReviews,ForAll(Table(varV97Incoming.Reviews) As j,{Key:Text(j.Value.Key),Status:Text(j.Value.Status),Note:Text(j.Value.Note),At:Text(j.Value.At)}));true,Set(varV97ImportOk,false);false));
+If(varV97ImportOk,IfError(ClearCollect(colV97StageLinks,ForAll(Table(varV97Incoming.Links) As j,{Key:T...[+5932]
+### V97Background [Image@2.2.3] parent=None
+  Image: ="data:image/svg+xml;utf8,"&EncodeUrl("<svg xmlns='http://www.w3.org/2000/svg' width='1440' height='1000' preserveAspectRatio='none'><defs><linearGradient id='g' x1='0' y1='1' x2='1' y2='0'><stop stop-color='#06101b'/><stop offset='.49' stop-color='#102238'/><stop offset='1' stop-color='#07111d'/></linearGradient></defs><rect width='1440' height='1000' fill='url(#g)'/></svg>")
+  X: =0
+  Y: =0
+  Width: =Parent.Width
+  Height: =Parent.Height
+  ImagePosition: =ImagePosition.Stretch
+  Visible: =true
+### V97Welcome [ModernText@1.0.0] parent=None
+  Text: ="V97 | FINANCE INSIGHTS" & Char(10) & "דשבורד פיננסי • Canvas" & Char(10) & "נתוני הדוגמה המקוריים כלולים בקובץ"
+  X: =(Parent.Width-Min(620,Parent.Width-32))/2
+  Y: =Max(20,Parent.Height/2-170)
+  Width: =Min(620,Parent.Width-32)
+  Height: =150
+  Visible: =!varV97Ready
+### V97Start [ModernText@1.0.0] parent=None
+  Text: =If(varV97Starting,"טוען נתונים…","פתח דשבורד")
+  X: =Max(16,(Parent.Width-280)/2)
+  Y: =Parent.Height/2
+  Width: =280
+  Height: =48
+  Visible: =!varV97Ready
+  OnSelect: =If(!varV97Starting,Set(varV97Starting,true);Select(V97LoadBase0))
+### V97WelcomeNote [ModernText@1.0.0] parent=None
+  Text: ="נדרש מקור נתונים מחובר בשם DashboardPOC_Data לפי מיפוי השדות בקובץ ההנחיות. ללא PCF."&Char(10)&"כאן נטענים נתוני גמידה 2025–2024. השמירה המשותפת זמינה לאחר סנכרון תקין."
+  X: =16
+  Y: =Parent.Height/2+60
+  Width: =Parent.Width-32
+  Height: =65
+  Visible: =!varV97Ready
+### V97Sidebar [ModernText@1.0.0] parent=None
+  Text: =""
+  X: =0
+  Y: =0
+  Width: =If(V97Background.Width>=900,150,Parent.Width)
+  Height: =If(V97Background.Width>=900,Parent.Height,52)
+  Visible: =varV97Ready
+### V97Brand [ModernText@1.0.0] parent=None
+  Text: ="FINANCE
+INSIGHTS"
+  X: =10
+  Y: =14
+  Width: =130
+  Height: =72
+  Visible: =varV97Ready && V97Background.Width>=900
+### V97Navbalance [ModernText@1.0.0] parent=None
+  Text: ="מאזן"
+  X: =If(V97Background.Width>=900,10,0*Parent.Width/6+2)
+  Y: =If(V97Background.Width>=900,110,8)
+  Width: =If(V97Background.Width>=900,130,Parent.Width/6-4)
+  Height: =34
+  Visible: =varV97Ready
+  OnSelect: =Set(varV97Page,"balance");Set(varV97Modal,"");Reset(V97Search)
+### V97Navpnl [ModernText@1.0.0] parent=None
+  Text: ="רווח והפסד"
+  X: =If(V97Background.Width>=900,10,1*Parent.Width/6+2)
+  Y: =If(V97Background.Width>=900,158,8)
+  Width: =If(V97Background.Width>=900,130,Parent.Width/6-4)
+  Height: =34
+  Visible: =varV97Ready
+  OnSelect: =Set(varV97Page,"pnl");Set(varV97Modal,"");Reset(V97Search)
+### V97Navcashflow [ModernText@1.0.0] parent=None
+  Text: ="תזרים"
+  X: =If(V97Background.Width>=900,10,2*Parent.Width/6+2)
+  Y: =If(V97Background.Width>=900,206,8)
+  Width: =If(V97Background.Width>=900,130,Parent.Width/6-4)
+  Height: =34
+  Visible: =varV97Ready
+  OnSelect: =Set(varV97Page,"cashflow");Set(varV97Modal,"");Reset(V97Search)
+### V97Navratios [ModernText@1.0.0] parent=None
+  Text: ="יחסים"
+  X: =If(V97Background.Width>=900,10,3*Parent.Width/6+2)
+  Y: =If(V97Background.Width>=900,254,8)
+  Width: =If(V97Background.Width>=900,130,Parent.Width/6-4)
+  Height: =34
+  Visible: =varV97Ready
+  OnSelect: =Set(varV97Page,"ratios");Set(varV97Modal,"");Reset(V97Search)
+### V97Navcomparisons [ModernText@1.0.0] parent=None
+  Text: ="השוואה"
+  X: =If(V97Background.Width>=900,10,4*Parent.Width/6+2)
+  Y: =If(V97Background.Width>=900,302,8)
+  Width: =If(V97Background.Width>=900,130,Parent.Width/6-4)
+  Height: =34
+  Visible: =varV97Ready
+  OnSelect: =Set(varV97Page,"comparisons");Set(varV97Modal,"");Reset(V97Search)
+### V97Navsettings [ModernText@1.0.0] parent=None
+  Text: ="הגדרות"
+  X: =If(V97Background.Width>=900,10,5*Parent.Width/6+2)
+  Y: =If(V97Background.Width>=900,350,8)
+  Width: =If(V97Background.Width>=900,130,Parent.Width/6-4)
+  Height: =34
+  Visible: =varV97Ready
+  OnSelect: =Set(varV97Page,"settings");Set(varV97Modal,"");Reset(V97Search)
+### V97SideNote [ModernText@1.0.0] parent=None
+  Text: ="V97 • Canvas 7"&Char(10)&"גמידה • 2025"&Char(10)&If(varV97RemoteReady,"מצב משותף","אין סנכרון")
+  X: =10
+  Y: =Parent.Height-100
+  Width: =130
+  Height: =80
+  Visible: =varV97Ready && V97Background.Width>=900
+### V97Title [ModernText@1.0.0] parent=None
+  Text: =varV97Company
+  X: =If(V97Background.Width>=900,166,12)
+  Y: =If(V97Background.Width>=900,12,62)
+  Width: =V97Background.Width-If(V97Background.Width>=900,166,12)-16
+  Height: =38
+  Visible: =varV97Ready
+### V97SubTitle [ModernText@1.0.0] parent=None
+  Text: =varV97Date & "  מול  " & varV97PriorDate & "  |  " & varV97Unit
+  X: =If(V97Background.Width>=900,166,12)
+  Y: =If(V97Background.Width>=900,12,62)+40
+  Width: =V97Background.Width-If(V97Background.Width>=900,166,12)-16
+  Height: =26
+  Visible: =varV97Ready
+### V97StateMessage [ModernText@1.0.0] parent=None
+  Text: =varV97SaveMessage
+  X: =If(V97Background.Width>=900,166,12)
+  Y: =If(V97Background.Width>=900,12,62)+67
+  Width: =V97Background.Width-If(V97Background.Width>=900,166,12)-16
+  Height: =26
+  Visible: =varV97Ready
+### V97Kpi0 [ModernText@1.0.0] parent=None
+  Text: ="רווח גולמי" & Char(10) & If(IsBlank(LookUp(colV97Rows,RowId="ratios_R01",Current)),"—",Text(LookUp(colV97Rows,RowId="ratios_R01",Current),"#,##0.###","he-IL"))&Char(10)&"השוואה: "&Text(LookUp(colV97Rows,RowId="ratios_R01",Prior),"#,##0.###","he-IL")
+  X: =If(V97Background.Width>=900,166,12)+Mod(0,If(V97Background.Width>=900,5,3))*((V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,5,3))
+  Y: =If(V97Background.Width>=900,12,62)+100+RoundDown(0/If(V97Background.Width>=900,5,3),0)*82
+  Width: =(V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,5,3)-8
+  Height: =75
+  Visible: =varV97Ready
+  OnSelect: =Set(varV97Section,"ratios_R01");Set(varV97Modal,"kpi")
+### V97Kpi1 [ModernText@1.0.0] parent=None
+  Text: ="EBITDA" & Char(10) & If(IsBlank(LookUp(colV97Rows,RowId="ratios_R03",Current)),"—",Text(LookUp(colV97Rows,RowId="ratios_R03",Current),"#,##0.###","he-IL"))&Char(10)&"השוואה: "&Text(LookUp(colV97Rows,RowId="ratios_R03",Prior),"#,##0.###","he-IL")
+  X: =If(V97Background.Width>=900,166,12)+Mod(1,If(V97Background.Width>=900,5,3))*((V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,5,3))
+  Y: =If(V97Background.Width>=900,12,62)+100+RoundDown(1/If(V97Background.Width>=900,5,3),0)*82
+  Width: =(V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,5,3)-8
+  Height: =75
+  Visible: =varV97Ready
+  OnSelect: =Set(varV97Section,"ratios_R03");Set(varV97Modal,"kpi")
+### V97Kpi2 [ModernText@1.0.0] parent=None
+  Text: ="הון חוזר" & Char(10) & If(IsBlank(LookUp(colV97Rows,RowId="ratios_R05",Current)),"—",Text(LookUp(colV97Rows,RowId="ratios_R05",Current),"#,##0.###","he-IL"))&Char(10)&"השוואה: "&Text(LookUp(colV97Rows,RowId="ratios_R05",Prior),"#,##0.###","he-IL")
+  X: =If(V97Background.Width>=900,166,12)+Mod(2,If(V97Background.Width>=900,5,3))*((V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,5,3))
+  Y: =If(V97Background.Width>=900,12,62)+100+RoundDown(2/If(V97Background.Width>=900,5,3),0)*82
+  Width: =(V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,5,3)-8
+  Height: =75
+  Visible: =varV97Ready
+  OnSelect: =Set(varV97Section,"ratios_R05");Set(varV97Modal,"kpi")
+### V97Kpi3 [ModernText@1.0.0] parent=None
+  Text: ="רווח תפעולי" & Char(10) & If(IsBlank(LookUp(colV97Rows,RowId="ratios_R06",Current)),"—",Text(LookUp(colV97Rows,RowId="ratios_R06",Current),"#,##0.###","he-IL"))&Char(10)&"השוואה: "&Text(LookUp(colV97Rows,RowId="ratios_R06",Prior),"#,##0.###","he-IL")
+  X: =If(V97Background.Width>=900,166,12)+Mod(3,If(V97Background.Width>=900,5,3))*((V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,5,3))
+  Y: =If(V97Background.Width>=900,12,62)+100+RoundDown(3/If(V97Background.Width>=900,5,3),0)*82
+  Width: =(V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,5,3)-8
+  Height: =75
+  Visible: =varV97Ready
+  OnSelect: =Set(varV97Section,"ratios_R06");Set(varV97Modal,"kpi")
+### V97Kpi4 [ModernText@1.0.0] parent=None
+  Text: ="רווח נקי" & Char(10) & If(IsBlank(LookUp(colV97Rows,RowId="ratios_R07",Current)),"—",Text(LookUp(colV97Rows,RowId="ratios_R07",Current),"#,##0.###","he-IL"))&Char(10)&"השוואה: "&Text(LookUp(colV97Rows,RowId="ratios_R07",Prior),"#,##0.###","he-IL")
+  X: =If(V97Background.Width>=900,166,12)+Mod(4,If(V97Background.Width>=900,5,3))*((V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,5,3))
+  Y: =If(V97Background.Width>=900,12,62)+100+RoundDown(4/If(V97Background.Width>=900,5,3),0)*82
+  Width: =(V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,5,3)-8
+  Height: =75
+  Visible: =varV97Ready
+  OnSelect: =Set(varV97Section,"ratios_R07");Set(varV97Modal,"kpi")
+### V97Actionexec [ModernText@1.0.0] parent=None
+  Text: ="סקירת מנהלים"
+  X: =If(V97Background.Width>=900,166,12)+Mod(0,If(V97Background.Width>=900,6,4))*((V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,6,4))
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+RoundDown(0/If(V97Background.Width>=900,6,4),0)*38
+  Width: =(V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,6,4)-6
+  Height: =32
+  Visible: =varV97Ready
+  OnSelect: =Set(varV97Modal,"exec");Reset(V97ModalSearch);Set(varV97EvidenceKey,"");Set(varV97NoteKey,"")
+### V97Actionexceptions [ModernText@1.0.0] parent=None
+  Text: ="חריגות"
+  X: =If(V97Background.Width>=900,166,12)+Mod(1,If(V97Background.Width>=900,6,4))*((V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,6,4))
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+RoundDown(1/If(V97Background.Width>=900,6,4),0)*38
+  Width: =(V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,6,4)-6
+  Height: =32
+  Visible: =varV97Ready
+  OnSelect: =Set(varV97Modal,"exceptions");Reset(V97ModalSearch);Set(varV97EvidenceKey,"");Set(varV97NoteKey,"");Set(varV97ExceptionType,"all");Reset(V97Min);Reset(V97Pct)
+### V97Actionunchanged [ModernText@1.0.0] parent=None
+  Text: ="ללא שינוי"
+  X: =If(V97Background.Width>=900,166,12)+Mod(2,If(V97Background.Width>=900,6,4))*((V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,6,4))
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+RoundDown(2/If(V97Background.Width>=900,6,4),0)*38
+  Width: =(V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,6,4)-6
+  Height: =32
+  Visible: =varV97Ready
+  OnSelect: =Set(varV97Modal,"unchanged");Reset(V97ModalSearch);Set(varV97EvidenceKey,"");Set(varV97NoteKey,"")
+### V97Actionfx [ModernText@1.0.0] parent=None
+  Text: ="מט״ח"
+  X: =If(V97Background.Width>=900,166,12)+Mod(3,If(V97Background.Width>=900,6,4))*((V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,6,4))
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+RoundDown(3/If(V97Background.Width>=900,6,4),0)*38
+  Width: =(V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,6,4)-6
+  Height: =32
+  Visible: =varV97Ready
+  OnSelect: =Set(varV97Modal,"fx");Reset(V97ModalSearch);Set(varV97EvidenceKey,"");Set(varV97NoteKey,"")
+### V97Actionerrors [ModernText@1.0.0] parent=None
+  Text: ="בדיקות קליטה"
+  X: =If(V97Background.Width>=900,166,12)+Mod(4,If(V97Background.Width>=900,6,4))*((V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,6,4))
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+RoundDown(4/If(V97Background.Width>=900,6,4),0)*38
+  Width: =(V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,6,4)-6
+  Height: =32
+  Visible: =varV97Ready
+  OnSelect: =Set(varV97Modal,"errors");Reset(V97ModalSearch);Set(varV97EvidenceKey,"");Set(varV97NoteKey,"")
+### V97Actioninsights [ModernText@1.0.0] parent=None
+  Text: ="תובנות מקור"
+  X: =If(V97Background.Width>=900,166,12)+Mod(5,If(V97Background.Width>=900,6,4))*((V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,6,4))
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+RoundDown(5/If(V97Background.Width>=900,6,4),0)*38
+  Width: =(V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,6,4)-6
+  Height: =32
+  Visible: =varV97Ready
+  OnSelect: =Set(varV97Modal,"insights");Reset(V97ModalSearch);Set(varV97EvidenceKey,"");Set(varV97NoteKey,"")
+### V97Actionadditional [ModernText@1.0.0] parent=None
+  Text: ="פקודות"
+  X: =If(V97Background.Width>=900,166,12)+Mod(6,If(V97Background.Width>=900,6,4))*((V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,6,4))
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+RoundDown(6/If(V97Background.Width>=900,6,4),0)*38
+  Width: =(V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,6,4)-6
+  Height: =32
+  Visible: =varV97Ready
+  OnSelect: =Set(varV97Modal,"additional");Reset(V97ModalSearch);Set(varV97EvidenceKey,"");Set(varV97NoteKey,"")
+### V97Actionnotes [ModernText@1.0.0] parent=None
+  Text: ="הערות"
+  X: =If(V97Background.Width>=900,166,12)+Mod(7,If(V97Background.Width>=900,6,4))*((V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,6,4))
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+RoundDown(7/If(V97Background.Width>=900,6,4),0)*38
+  Width: =(V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,6,4)-6
+  Height: =32
+  Visible: =varV97Ready
+  OnSelect: =Set(varV97Modal,"notes");Reset(V97ModalSearch);Set(varV97EvidenceKey,"");Set(varV97NoteKey,"")
+### V97Actionevidence [ModernText@1.0.0] parent=None
+  Text: ="ראיות"
+  X: =If(V97Background.Width>=900,166,12)+Mod(8,If(V97Background.Width>=900,6,4))*((V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,6,4))
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+RoundDown(8/If(V97Background.Width>=900,6,4),0)*38
+  Width: =(V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,6,4)-6
+  Height: =32
+  Visible: =varV97Ready
+  OnSelect: =Set(varV97Modal,"evidence");Reset(V97ModalSearch);Set(varV97EvidenceKey,"");Set(varV97NoteKey,"")
+### V97Actioncharts [ModernText@1.0.0] parent=None
+  Text: ="גרפים"
+  X: =If(V97Background.Width>=900,166,12)+Mod(9,If(V97Background.Width>=900,6,4))*((V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,6,4))
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+RoundDown(9/If(V97Background.Width>=900,6,4),0)*38
+  Width: =(V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,6,4)-6
+  Height: =32
+  Visible: =varV97Ready
+  OnSelect: =Set(varV97Modal,"charts");Reset(V97ModalSearch);Set(varV97EvidenceKey,"");Set(varV97NoteKey,"")
+### V97Actionai [ModernText@1.0.0] parent=None
+  Text: ="Ask AI"
+  X: =If(V97Background.Width>=900,166,12)+Mod(10,If(V97Background.Width>=900,6,4))*((V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,6,4))
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+RoundDown(10/If(V97Background.Width>=900,6,4),0)*38
+  Width: =(V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,6,4)-6
+  Height: =32
+  Visible: =varV97Ready
+  OnSelect: =Set(varV97Modal,"ai");Reset(V97ModalSearch);Set(varV97EvidenceKey,"");Set(varV97NoteKey,"")
+### V97Actionbackup [ModernText@1.0.0] parent=None
+  Text: ="גיבוי"
+  X: =If(V97Background.Width>=900,166,12)+Mod(11,If(V97Background.Width>=900,6,4))*((V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,6,4))
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+RoundDown(11/If(V97Background.Width>=900,6,4),0)*38
+  Width: =(V97Background.Width-If(V97Background.Width>=900,166,12)-16)/If(V97Background.Width>=900,6,4)-6
+  Height: =32
+  Visible: =varV97Ready
+  OnSelect: =Set(varV97ExportText,JSON({Version:1,Dataset:varV97Dataset,Entries:colV97Entries,Notes:colV97Notes,Reviews:colV97Reviews,Links:colV97Links,Urls:colV97Urls,History:colV97History,Materiality:varV97Materiality,Market:varV97Market},JSONFormat.Compact));Reset(V97Export);Set(varV97Modal,"backup")
+### V97SearchLabel [ModernText@1.0.0] parent=None
+  Text: ="חיפוש סעיף / חשבון"
+  X: =If(V97Background.Width>=900,166,12)+(V97Background.Width-If(V97Background.Width>=900,166,12)-16)*0.56
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+If(V97Background.Width>=900,82,120)
+  Width: =(V97Background.Width-If(V97Background.Width>=900,166,12)-16)*0.44
+  Height: =22
+  Visible: =varV97Ready
+### V97Search [Classic/TextInput@2.3.2] parent=None
+  X: =If(V97Background.Width>=900,166,12)+(V97Background.Width-If(V97Background.Width>=900,166,12)-16)*0.56
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+If(V97Background.Width>=900,82,120)+24
+  Width: =(V97Background.Width-If(V97Background.Width>=900,166,12)-16)*0.44
+  Height: =34
+  Default: =""
+  HintText: ="חיפוש בכל הדוחות והחשבונות"
+  Visible: =varV97Ready && varV97Page<>"settings"
+  DelayOutput: =true
+  HoverColor: =RGBA(219,227,238,1)
+  FocusedBorderThickness: =2
+### V97MaterialityLabel [ModernText@1.0.0] parent=None
+  Text: ="מהותיות"
+  X: =If(V97Background.Width>=900,166,12)
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+If(V97Background.Width>=900,82,120)
+  Width: =90
+  Height: =22
+  Visible: =varV97Ready
+### V97Materiality [Classic/TextInput@2.3.2] parent=None
+  X: =If(V97Background.Width>=900,166,12)
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+If(V97Background.Width>=900,82,120)+24
+  Width: =90
+  Height: =34
+  Default: =Text(varV97Materiality)
+  HintText: ="סף מהותיות ביחידות הדוח"
+  Visible: =varV97Ready
+  DelayOutput: =true
+  HoverColor: =RGBA(219,227,238,1)
+  FocusedBorderThickness: =2
+  OnChange: =If(IsNumeric(Self.Text) && Value(Self.Text)>=0,Set(varV97Materiality,Value(Self.Text));Select(V97SaveLocal),Notify("נדרש סף מספרי לא שלילי",NotificationType.Error);Reset(Self))
+  DisplayMode: =If(varV97RemoteReady && !varV97Syncing,DisplayMode.Edit,DisplayMode.Disabled)
+### V97Collapse [ModernText@1.0.0] parent=None
+  Text: ="קיפול / פתיחה"
+  X: =If(V97Background.Width>=900,166,12)+100
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+If(V97Background.Width>=900,82,120)+24
+  Width: =110
+  Height: =34
+  Visible: =varV97Ready
+  OnSelect: =If(IsEmpty(colV97Closed),ClearCollect(colV97Closed,ShowColumns(Filter(colV97Base,HasChildren),RowId)),Clear(colV97Closed))
+### V97CopyTable [ModernText@1.0.0] parent=None
+  Text: ="העתק טבלה"
+  X: =If(V97Background.Width>=900,166,12)+216
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+If(V97Background.Width>=900,82,120)+24
+  Width: =110
+  Height: =34
+  Visible: =varV97Ready && V97Background.Width>=900 && varV97Page<>"settings"
+  OnSelect: =Set(varV97ExportText,"סעיף"&Char(9)&"קוד"&Char(9)&varV97Date&Char(9)&varV97PriorDate&Char(9)&"הפרש"&Char(9)&"שינוי %"&Char(9)&"מטבע"&Char(10)&Concat(SortByColumns(AddColumns(Filter(colV97Rows As r,(r.Page=varV97Page || !IsBlank(V97Search.Text)) && (IsBlank(V97Search.Text) || Lower(V97Search.Text) in Lower(r.Name & " " & r.Code) || CountIf(colV97AllDrill,Section=r.RowId && Lower(V97Search.Text) in Lower(Name & " " & Account))>0) && (!IsBlank(V97Search.Text) || CountIf(colV97Edges,RowId=r.RowId && Ancestor in colV97Closed.RowId)=0)),Delta,If(IsBlank(Current) || IsBlank(Prior),Blank(),Current-Prior),Percent,If(IsBlank(Current) || IsBlank(Prior) || Prior=0,Blank(),100*(Current-Prior)/Abs(Prior))),varV97Sort,If(varV97Descending,SortOrder.Descending,SortOrder.Ascending)),Name&Char(9)&Code&Char(9)&If(IsBlank(Current),"",Text(Current,"0.###","en-US"))&Char(9)&If(IsBlank(Prior),"",Text(Prior,"0.###","en-US"))&Char(9)&If(IsBlank(Delta),"",Text(Delta,"0.###","en-US"))&Char(9)&If(IsBlank(Percent),"",Text(Percent,"0.###","en-US"))&Char(9)&Unit,Char(10)));IfError(Copy(varV97ExportText);true,Set(varV97Modal,"copy");Reset(V97Export);false,Notify("הטבלה הועתקה",NotificationType.Success);true)
+### V97HeadName [ModernText@1.0.0] parent=None
+  Text: ="סעיף"
+  X: =If(V97Background.Width>=900,166,12)+(V97Background.Width-If(V97Background.Width>=900,166,12)-16)*0.61
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+If(V97Background.Width>=900,82,120)+64
+  Width: =(V97Background.Width-If(V97Background.Width>=900,166,12)-16)*0.39-2
+  Height: =28
+  Visible: =varV97Ready && varV97Page in ["balance","pnl","cashflow","ratios"]
+  OnSelect: =Set(varV97Descending,If(varV97Sort="Order",!varV97Descending,false));Set(varV97Sort,"Order")
+### V97HeadCurrent [ModernText@1.0.0] parent=None
+  Text: =varV97Date
+  X: =If(V97Background.Width>=900,166,12)+(V97Background.Width-If(V97Background.Width>=900,166,12)-16)*0.43
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+If(V97Background.Width>=900,82,120)+64
+  Width: =(V97Background.Width-If(V97Background.Width>=900,166,12)-16)*0.18-2
+  Height: =28
+  Visible: =varV97Ready && varV97Page in ["balance","pnl","cashflow","ratios"]
+  OnSelect: =Set(varV97Descending,If(varV97Sort="Current",!varV97Descending,false));Set(varV97Sort,"Current")
+### V97HeadPrior [ModernText@1.0.0] parent=None
+  Text: =varV97PriorDate
+  X: =If(V97Background.Width>=900,166,12)+(V97Background.Width-If(V97Background.Width>=900,166,12)-16)*0.26
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+If(V97Background.Width>=900,82,120)+64
+  Width: =(V97Background.Width-If(V97Background.Width>=900,166,12)-16)*0.17-2
+  Height: =28
+  Visible: =varV97Ready && varV97Page in ["balance","pnl","cashflow","ratios"]
+  OnSelect: =Set(varV97Descending,If(varV97Sort="Prior",!varV97Descending,false));Set(varV97Sort,"Prior")
+### V97HeadDiff [ModernText@1.0.0] parent=None
+  Text: ="שינוי"
+  X: =If(V97Background.Width>=900,166,12)+(V97Background.Width-If(V97Background.Width>=900,166,12)-16)*0.1
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+If(V97Background.Width>=900,82,120)+64
+  Width: =(V97Background.Width-If(V97Background.Width>=900,166,12)-16)*0.16-2
+  Height: =28
+  Visible: =varV97Ready && varV97Page in ["balance","pnl","cashflow","ratios"]
+  OnSelect: =Set(varV97Descending,If(varV97Sort="Delta",!varV97Descending,false));Set(varV97Sort,"Delta")
+### V97HeadPct [ModernText@1.0.0] parent=None
+  Text: ="%"
+  X: =If(V97Background.Width>=900,166,12)+(V97Background.Width-If(V97Background.Width>=900,166,12)-16)*0
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+If(V97Background.Width>=900,82,120)+64
+  Width: =(V97Background.Width-If(V97Background.Width>=900,166,12)-16)*0.1-2
+  Height: =28
+  Visible: =varV97Ready && varV97Page in ["balance","pnl","cashflow","ratios"]
+  OnSelect: =Set(varV97Descending,If(varV97Sort="Percent",!varV97Descending,false));Set(varV97Sort,"Percent")
+### V97Main [Gallery@2.15.0] parent=None
+  Items: =SortByColumns(AddColumns(Filter(colV97Rows As r,(r.Page=varV97Page || !IsBlank(V97Search.Text)) && (IsBlank(V97Search.Text) || Lower(V97Search.Text) in Lower(r.Name & " " & r.Code) || CountIf(colV97AllDrill,Section=r.RowId && Lower(V97Search.Text) in Lower(Name & " " & Account))>0) && (!IsBlank(V97Search.Text) || CountIf(colV97Edges,RowId=r.RowId && Ancestor in colV97Closed.RowId)=0)),Delta,If(IsBlank(Current) || IsBlank(Prior),Blank(),Current-Prior),Percent,If(IsBlank(Current) || IsBlank(Prior) || Prior=0,Blank(),100*(Current-Prior)/Abs(Prior))),varV97Sort,If(varV97Descending,SortOrder.Descending,SortOrder.Ascending))
+  X: =If(V97Background.Width>=900,166,12)
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+If(V97Background.Width>=900,82,120)+64+32
+  Width: =V97Background.Width-If(V97Background.Width>=900,166,12)-16
+  Height: =Max(80,Parent.Height-(If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+If(V97Background.Width>=900,82,120)+64+32)-38-If(varV97Page="ratios",150,0))
+  TemplateSize: =36
+  TemplatePadding: =0
+  Visible: =varV97Ready && varV97Page in ["balance","pnl","cashflow","ratios"]
+  DelayItemLoading: =true
+  TabIndex: =0
+  ShowScrollbar: =true
+### V97RowBG [ModernText@1.0.0] parent=V97Main
+  Text: =""
+  X: =0
+  Y: =0
+  Width: =Parent.TemplateWidth
+  Height: =36
+  Visible: =true
+### V97RowName [ModernText@1.0.0] parent=V97Main
+  Text: =If(ThisItem.HasChildren,If(ThisItem.RowId in colV97Closed.RowId,"◀ ","▼ "),"") & ThisItem.Name & If(IsBlank(ThisItem.Code),"","  [" & ThisItem.Code & "]") & If(!IsBlank(ThisItem.Current) && !IsBlank(ThisItem.Prior) && Abs(ThisItem.Current-ThisItem.Prior)>=varV97Materiality,"  ★","")&If(!IsBlank(LookUp(colV97Notes,Key=ThisItem.RowId)),"  ✎","")&If(CountIf(colV97EvidenceView,Section=ThisItem.RowId)>0,"  ●","")
+  X: =Parent.TemplateWidth*0.61
+  Y: =0
+  Width: =Parent.TemplateWidth*0.39
+  Height: =36
+  Visible: =true
+  OnSelect: =If(ThisItem.HasChildren,If(ThisItem.RowId in colV97Closed.RowId,RemoveIf(colV97Closed,RowId=ThisItem.RowId),Collect(colV97Closed,{RowId:ThisItem.RowId})),Set(varV97Section,ThisItem.RowId);Set(varV97NoteKey,ThisItem.RowId);Reset(V97Note);Reset(V97ModalSearch);Set(varV97BackModal,"");Set(varV97DetailText,"");Set(varV97Modal,If(ThisItem.Page="ratios","kpi","drill")))
+### V97RowCurrent [ModernText@1.0.0] parent=V97Main
+  Text: =If(IsBlank(ThisItem.Current),"—",Text(ThisItem.Current,"#,##0.###","he-IL")) & If(ThisItem.Unit="%","%","")
+  X: =Parent.TemplateWidth*0.43
+  Y: =0
+  Width: =Parent.TemplateWidth*0.18
+  Height: =36
+  Visible: =true
+  OnSelect: =Set(varV97Section,ThisItem.RowId);Set(varV97NoteKey,ThisItem.RowId);Reset(V97Note);Reset(V97ModalSearch);Set(varV97BackModal,"");Set(varV97DetailText,"");Set(varV97Modal,If(ThisItem.Page="ratios","kpi","drill"));Reset(V97Min);Reset(V97Pct)
+### V97RowPrior [ModernText@1.0.0] parent=V97Main
+  Text: =If(IsBlank(ThisItem.Prior),"—",Text(ThisItem.Prior,"#,##0.###","he-IL")) & If(ThisItem.Unit="%","%","")
+  X: =Parent.TemplateWidth*0.26
+  Y: =0
+  Width: =Parent.TemplateWidth*0.17
+  Height: =36
+  Visible: =true
+  OnSelect: =Set(varV97Section,ThisItem.RowId);Set(varV97NoteKey,ThisItem.RowId);Reset(V97Note);Reset(V97ModalSearch);Set(varV97BackModal,"");Set(varV97DetailText,"");Set(varV97Modal,If(ThisItem.Page="ratios","kpi","drill"));Reset(V97Min);Reset(V97Pct)
+### V97RowDiff [ModernText@1.0.0] parent=V97Main
+  Text: =If(IsBlank(If(IsBlank(ThisItem.Current) || IsBlank(ThisItem.Prior),Blank(),ThisItem.Current-ThisItem.Prior)),"—",Text(If(IsBlank(ThisItem.Current) || IsBlank(ThisItem.Prior),Blank(),ThisItem.Current-ThisItem.Prior),"#,##0.###","he-IL"))
+  X: =Parent.TemplateWidth*0.1
+  Y: =0
+  Width: =Parent.TemplateWidth*0.16
+  Height: =36
+  Visible: =true
+  OnSelect: =Set(varV97Section,ThisItem.RowId);Set(varV97NoteKey,ThisItem.RowId);Reset(V97Note);Reset(V97ModalSearch);Set(varV97BackModal,"");Set(varV97DetailText,"");Set(varV97Modal,If(ThisItem.Page="ratios","kpi","drill"));Reset(V97Min);Reset(V97Pct)
+### V97RowPct [ModernText@1.0.0] parent=V97Main
+  Text: =If(IsBlank(ThisItem.Current) || IsBlank(ThisItem.Prior),"—",If(ThisItem.Prior=0,If(ThisItem.Current=0,"0%","חדש"),Text(100*(ThisItem.Current-ThisItem.Prior)/Abs(ThisItem.Prior),"0.0","he-IL") & "%"))
+  X: =0
+  Y: =0
+  Width: =Parent.TemplateWidth*0.1
+  Height: =36
+  Visible: =true
+### V97Footer [ModernText@1.0.0] parent=None
+  Text: ="שורות בתצוגה: "&CountRows(SortByColumns(AddColumns(Filter(colV97Rows As r,(r.Page=varV97Page || !IsBlank(V97Search.Text)) && (IsBlank(V97Search.Text) || Lower(V97Search.Text) in Lower(r.Name & " " & r.Code) || CountIf(colV97AllDrill,Section=r.RowId && Lower(V97Search.Text) in Lower(Name & " " & Account))>0) && (!IsBlank(V97Search.Text) || CountIf(colV97Edges,RowId=r.RowId && Ancestor in colV97Closed.RowId)=0)),Delta,If(IsBlank(Current) || IsBlank(Prior),Blank(),Current-Prior),Percent,If(IsBlank(Current) || IsBlank(Prior) || Prior=0,Blank(),100*(Current-Prior)/Abs(Prior))),varV97Sort,If(varV97Descending,SortOrder.Descending,SortOrder.Ascending)))&If(!IsBlank(V97Search.Text)," | חיפוש בכל דפי הדוח","")
+  X: =If(V97Background.Width>=900,166,12)
+  Y: =Parent.Height-32
+  Width: =V97Background.Width-If(V97Background.Width>=900,166,12)-16
+  Height: =28
+  Visible: =varV97Ready && varV97Page in ["balance","pnl","cashflow","ratios"]
+### V97Comparison [Gallery@2.15.0] parent=None
+  Items: =FirstN(Filter(colV97Rows,Page="ratios"),8)
+  X: =If(V97Background.Width>=900,166,12)
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+If(V97Background.Width>=900,82,120)+64
+  Width: =V97Background.Width-If(V97Background.Width>=900,166,12)-16
+  Height: =Max(80,Parent.Height-(If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+If(V97Background.Width>=900,82,120)+64)-38)
+  TemplateSize: =110
+  TemplatePadding: =0
+  Visible: =varV97Ready && varV97Page="comparisons"
+  DelayItemLoading: =true
+  TabIndex: =0
+  ShowScrollbar: =true
+  WrapCount: =If(V97Background.Width>=900,2,1)
+### V97CompareName [ModernText@1.0.0] parent=V97Comparison
+  Text: =ThisItem.Name
+  X: =0
+  Y: =0
+  Width: =Parent.TemplateWidth
+  Height: =30
+  Visible: =true
+### V97CompareNumbers [ModernText@1.0.0] parent=V97Comparison
+  Text: =varV97Date & ": " & If(IsBlank(ThisItem.Current),"—",Text(ThisItem.Current,"#,##0.###","he-IL")) & " | " & varV97PriorDate & ": " & If(IsBlank(ThisItem.Prior),"—",Text(ThisItem.Prior,"#,##0.###","he-IL")) & " " & ThisItem.Unit
+  X: =0
+  Y: =30
+  Width: =Parent.TemplateWidth
+  Height: =26
+  Visible: =true
+### V97CompareAxis [ModernText@1.0.0] parent=V97Comparison
+  Text: =""
+  X: =Parent.TemplateWidth/2
+  Y: =59
+  Width: =1
+  Height: =38
+  Visible: =true
+### V97CompareBar0 [ModernText@1.0.0] parent=V97Comparison
+  Text: =""
+  X: =Parent.TemplateWidth/2-If(ThisItem.Current<0,If(IsBlank(ThisItem.Current),0,Abs(ThisItem.Current)/Max(1,Abs(Coalesce(ThisItem.Current,0)),Abs(Coalesce(ThisItem.Prior,0)))*(Parent.TemplateWidth/2-12)),0)
+  Y: =60
+  Width: =If(IsBlank(ThisItem.Current),0,Abs(ThisItem.Current)/Max(1,Abs(Coalesce(ThisItem.Current,0)),Abs(Coalesce(ThisItem.Prior,0)))*(Parent.TemplateWidth/2-12))
+  Height: =12
+  Visible: =true
+### V97CompareBar1 [ModernText@1.0.0] parent=V97Comparison
+  Text: =""
+  X: =Parent.TemplateWidth/2-If(ThisItem.Prior<0,If(IsBlank(ThisItem.Prior),0,Abs(ThisItem.Prior)/Max(1,Abs(Coalesce(ThisItem.Current,0)),Abs(Coalesce(ThisItem.Prior,0)))*(Parent.TemplateWidth/2-12)),0)
+  Y: =78
+  Width: =If(IsBlank(ThisItem.Prior),0,Abs(ThisItem.Prior)/Max(1,Abs(Coalesce(ThisItem.Current,0)),Abs(Coalesce(ThisItem.Prior,0)))*(Parent.TemplateWidth/2-12))
+  Height: =12
+  Visible: =true
+### V97SettingsText [ModernText@1.0.0] parent=None
+  Text: ="גמידה פור לייף • 2025 מול 2024"&Char(10)&"השינויים משותפים באמצעות DashboardPOC_Data. רענן מהצוות לקבלת עדכונים."&Char(10)&"שינוי נשמר כאירוע חדש. בשינוי אותו פריט, האירוע האחרון בשרת קובע."&Char(10)&"שחזור גיבוי מחליף את המצב המשותף. טעינה של 500 רשומות ומעלה נחסמת למניעת עבודה על מידע חלקי."
+  X: =If(V97Background.Width>=900,166,12)
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+If(V97Background.Width>=900,82,120)+64
+  Width: =V97Background.Width-If(V97Background.Width>=900,166,12)-16
+  Height: =100
+  Visible: =varV97Ready && varV97Page="settings"
+### V97SaveSettings [ModernText@1.0.0] parent=None
+  Text: ="שמור הגדרות לצוות"
+  X: =If(V97Background.Width>=900,166,12)
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+If(V97Background.Width>=900,82,120)+64+110
+  Width: =150
+  Height: =34
+  Visible: =varV97Ready && varV97Page="settings"
+  OnSelect: =Select(V97SaveLocal)
+### V97RestoreSettings [ModernText@1.0.0] parent=None
+  Text: ="רענן מהצוות"
+  X: =If(V97Background.Width>=900,166,12)+162
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+If(V97Background.Width>=900,82,120)+64+110
+  Width: =150
+  Height: =34
+  Visible: =varV97Ready && varV97Page="settings"
+  OnSelect: =If(varV97Dirty,Set(varV97Modal,"restoreconfirm"),Select(V97LoadLocal))
+### V97LoadLocal [ModernText@1.0.0] parent=None
+  Text: =""
+  X: =0
+  Y: =0
+  Width: =1
+  Height: =1
+  Visible: =false
+  OnSelect: =If(!varV97Syncing,Set(varV97Modal,"");Select(V97LoadShared))
+### V97MarketLabel [ModernText@1.0.0] parent=None
+  Text: ="יחסי שווי שוק · הזן שווי שוק באותה יחידת הצגה של הדשבורד"
+  X: =If(V97Background.Width>=900,166,12)
+  Y: =Parent.Height-142
+  Width: =V97Background.Width-If(V97Background.Width>=900,166,12)-16
+  Height: =24
+  Visible: =varV97Ready && varV97Page="ratios"
+### V97Market [Classic/TextInput@2.3.2] parent=None
+  X: =If(V97Background.Width>=900,166,12)
+  Y: =Parent.Height-112
+  Width: =180
+  Height: =70
+  Default: =Text(varV97Market)
+  HintText: ="שווי שוק החברה"
+  Visible: =varV97Ready && varV97Page="ratios"
+  DelayOutput: =true
+  HoverColor: =RGBA(219,227,238,1)
+  FocusedBorderThickness: =2
+  OnChange: =If(IsNumeric(Self.Text) && Value(Self.Text)>=0,Set(varV97Market,Value(Self.Text));Select(V97SaveLocal),Notify("נדרש מספר לא שלילי",NotificationType.Error);Reset(Self))
+  DisplayMode: =If(varV97RemoteReady && !varV97Syncing,DisplayMode.Edit,DisplayMode.Disabled)
+### V97Valuation [ModernText@1.0.0] parent=None
+  Text: ="יחס הון לשווי שוק"&Char(10)&If(!(varV97Market>0),"—",Text(100*LookUp(colV97Rows,RowId="balance_total_equity",Current)/varV97Market,"0.0","he-IL")&"%")
+  X: =If(V97Background.Width>=900,166,12)+190
+  Y: =Parent.Height-112
+  Width: =Max(110,(V97Background.Width-If(V97Background.Width>=900,166,12)-216)/3-6)
+  Height: =70
+  Visible: =varV97Ready && varV97Page="ratios"
+### V97PriceToBook [ModernText@1.0.0] parent=None
+  Text: ="מכפיל הון"&Char(10)&If(!(varV97Market>0) || LookUp(colV97Rows,RowId="balance_total_equity",Current)=0,"—",Text(varV97Market/LookUp(colV97Rows,RowId="balance_total_equity",Current),"0.00","he-IL")&"x")
+  X: =V97Valuation.X+V97Valuation.Width+6
+  Y: =Parent.Height-112
+  Width: =V97Valuation.Width
+  Height: =70
+  Visible: =varV97Ready && varV97Page="ratios"
+### V97PriceEarnings [ModernText@1.0.0] parent=None
+  Text: ="מכפיל רווח"&Char(10)&If(!(varV97Market>0) || LookUp(colV97Rows,RowId="ratios_R07",Current)=0,"—",If(LookUp(colV97Rows,RowId="ratios_R07",Current)<0,"לא רלוונטי (הפסד)",Text(varV97Market/LookUp(colV97Rows,RowId="ratios_R07",Current),"0.00","he-IL")&"x"))
+  X: =V97PriceToBook.X+V97PriceToBook.Width+6
+  Y: =Parent.Height-112
+  Width: =V97Valuation.Width
+  Height: =70
+  Visible: =varV97Ready && varV97Page="ratios"
+### V97Shade [ModernText@1.0.0] parent=None
+  Text: =""
+  X: =0
+  Y: =0
+  Width: =Parent.Width
+  Height: =Parent.Height
+  Visible: =varV97Ready && !IsBlank(varV97Modal)
+### V97Panel [ModernText@1.0.0] parent=None
+  Text: =""
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)
+  Y: =20
+  Width: =Min(1160,Parent.Width-16)
+  Height: =Parent.Height-40
+  Visible: =varV97Ready && !IsBlank(varV97Modal)
+### V97ModalTitle [ModernText@1.0.0] parent=None
+  Text: =Switch(varV97Modal,"drill","פירוט סעיף","kpi","פירוט מדד / יחס","exec","סקירת מנהלים","exceptions","חריגות ושינויים מהותיים","unchanged","יתרות ללא שינוי","fx","בדיקות מט״ח","errors","קליטה ובקרות","insights","תובנות כפי שהתקבלו במקור","additional","פקודות מקור ופקודות ידניות","notes","מרכז הערות","evidence","מרכז ראיות","evidencedetail","פרטי ראיה","drivers","מקורות השינוי ברווח","charts","הכנסות, רווחיות והרכב המאזן","ai","Ask AI — הכנת שאלה","backup","גיבוי ושחזור","copy","טקסט להעתקה","restoreconfirm","טעינת גיבוי","deleteconfirm","מחיקת פקודה","V97") & If(varV97Modal in ["drill","kpi"]," · " & LookUp(colV97Rows,RowId=varV97Section,Name),"")
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+300
+  Y: =32
+  Width: =Min(1160,Parent.Width-16)-328
+  Height: =36
+  Visible: =varV97Ready && !IsBlank(varV97Modal)
+### V97ModalClose [ModernText@1.0.0] parent=None
+  Text: ="✕"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+12
+  Y: =32
+  Width: =38
+  Height: =34
+  Visible: =varV97Ready && !IsBlank(varV97Modal)
+  OnSelect: =Set(varV97Modal,"");Set(varV97DeleteId,"")
+### V97ModalSearch [Classic/TextInput@2.3.2] parent=None
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =82
+  Width: =(Min(1160,Parent.Width-16)-52)*0.5
+  Height: =34
+  Default: =""
+  HintText: ="חיפוש בחלון"
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal in ["drill","exec","exceptions","unchanged","fx","additional","notes","evidence","charts"]
+  DelayOutput: =true
+  HoverColor: =RGBA(219,227,238,1)
+  FocusedBorderThickness: =2
+### V97MinLabel [ModernText@1.0.0] parent=None
+  Text: ="שינוי מזערי"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+(Min(1160,Parent.Width-16)-52)*0.52
+  Y: =66
+  Width: =105
+  Height: =18
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal in ["drill","exceptions","exec"]
+### V97Min [Classic/TextInput@2.3.2] parent=None
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+(Min(1160,Parent.Width-16)-52)*0.52
+  Y: =86
+  Width: =105
+  Height: =34
+  Default: =If(varV97Modal="exceptions",Text(varV97Materiality),"0")
+  HintText: ="סף סכום"
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal in ["drill","exceptions","exec"]
+  DelayOutput: =true
+  HoverColor: =RGBA(219,227,238,1)
+  FocusedBorderThickness: =2
+### V97PctLabel [ModernText@1.0.0] parent=None
+  Text: ="אחוז מזערי"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+(Min(1160,Parent.Width-16)-52)*0.68
+  Y: =66
+  Width: =105
+  Height: =18
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal in ["drill","exceptions","exec"]
+### V97Pct [Classic/TextInput@2.3.2] parent=None
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+(Min(1160,Parent.Width-16)-52)*0.68
+  Y: =86
+  Width: =105
+  Height: =34
+  Default: ="0"
+  HintText: ="סף אחוז"
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal in ["drill","exceptions","exec"]
+  DelayOutput: =true
+  HoverColor: =RGBA(219,227,238,1)
+  FocusedBorderThickness: =2
+### V97Drill [Gallery@2.15.0] parent=None
+  Items: =Filter(colV97AllDrill As d,(d.Section=varV97Section || CountIf(colV97Edges,RowId=d.Section && Ancestor=varV97Section)>0) && (IsBlank(V97ModalSearch.Text) || Lower(V97ModalSearch.Text) in Lower(d.Name&" "&d.Account)) && (IfError(Value(V97Min.Text),0)<=0 || !IsBlank(d.Current) && !IsBlank(d.Prior) && Abs(d.Current-d.Prior)>=IfError(Value(V97Min.Text),0)) && (IfError(Value(V97Pct.Text),0)<=0 || !IsBlank(d.Current) && !IsBlank(d.Prior) && If(d.Prior=0,d.Current<>0,Abs(100*(d.Current-d.Prior)/d.Prior)>=IfError(Value(V97Pct.Text),0))))
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =130
+  Width: =(Min(1160,Parent.Width-16)-52)*0.58
+  Height: =Max(70,Parent.Height-400)
+  TemplateSize: =56
+  TemplatePadding: =0
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="drill"
+  DelayItemLoading: =true
+  TabIndex: =0
+  ShowScrollbar: =true
+### V97DrillRow [ModernText@1.0.0] parent=V97Drill
+  Text: =ThisItem.Account & " | " & ThisItem.Name & Char(10) & If(IsBlank(ThisItem.Current),"—",Text(ThisItem.Current,"#,##0.###","he-IL")) & "  מול  " & If(IsBlank(ThisItem.Prior),"—",Text(ThisItem.Prior,"#,##0.###","he-IL")) & " | " & If(ThisItem.Source="trial_balance","מאזן בוחן",If(ThisItem.Source="manual_entry","פקודה ידנית","פקודת מקור"))
+  X: =0
+  Y: =0
+  Width: =Parent.TemplateWidth
+  Height: =52
+  Visible: =true
+  OnSelect: =Set(varV97NoteKey,If(ThisItem.Source="manual_entry",ThisItem.Section,ThisItem.Key));Reset(V97Note);Set(varV97DetailText,ThisItem.Detail);Set(varV97SelectedAccount,ThisItem.Account)
+### V97DrillRecon [ModernText@1.0.0] parent=None
+  Text: =With({r:LookUp(colV97Rows,RowId=varV97Section),s:Sum(Filter(colV97AllDrill As d,(d.Section=varV97Section || CountIf(colV97Edges,RowId=d.Section && Ancestor=varV97Section)>0)),Current)},"דוח: "&Text(r.Current,"#,##0.###","he-IL")&" | פירוט כולל התאמות: "&Text(s,"#,##0.###","he-IL")&Char(10)&If(CountIf(colV97AllDrill As d,(d.Section=varV97Section || CountIf(colV97Edges,RowId=d.Section && Ancestor=varV97Section)>0))=0,"אין פירוט המאפשר התאמה", "פער מלא, לפני סינון: "&Text(r.Current-s,"#,##0.###","he-IL")))
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =Parent.Height-257
+  Width: =(Min(1160,Parent.Width-16)-52)*0.58
+  Height: =52
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="drill"
+### V97DrillManual [Gallery@2.15.0] parent=None
+  Items: =Filter(colV97Entries,Debit=varV97Section || Credit=varV97Section)
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =Parent.Height-200
+  Width: =(Min(1160,Parent.Width-16)-52)*0.58
+  Height: =140
+  TemplateSize: =34
+  TemplatePadding: =0
+  Visible: =false
+  DelayItemLoading: =true
+  TabIndex: =0
+  ShowScrollbar: =true
+### V97DrillManualText [ModernText@1.0.0] parent=V97DrillManual
+  Text: =ThisItem.Description & " | " & If(ThisItem.Debit=varV97Section,"חובה","זכות") & " " & If(IsBlank(ThisItem.Amount),"—",Text(ThisItem.Amount,"#,##0.###","he-IL"))
+  X: =0
+  Y: =0
+  Width: =Parent.TemplateWidth
+  Height: =32
+  Visible: =true
+### V97NoteTarget [ModernText@1.0.0] parent=None
+  Text: ="יעד הערה: " & Coalesce(varV97NoteKey,"בחר שורה")
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+(Min(1160,Parent.Width-16)-52)*0.62
+  Y: =130
+  Width: =(Min(1160,Parent.Width-16)-52)*0.38
+  Height: =48
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal in ["drill","notes"]
+### V97Note [Classic/TextInput@2.3.2] parent=None
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+(Min(1160,Parent.Width-16)-52)*0.62
+  Y: =182
+  Width: =(Min(1160,Parent.Width-16)-52)*0.38
+  Height: =160
+  Default: =Coalesce(LookUp(colV97Notes,Key=varV97NoteKey,Text),"")
+  HintText: ="הערת ביקורת"
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal in ["drill","notes"]
+  DelayOutput: =true
+  HoverColor: =RGBA(219,227,238,1)
+  FocusedBorderThickness: =2
+  Mode: =TextMode.MultiLine
+### V97NoteApply [ModernText@1.0.0] parent=None
+  Text: ="החל הערה"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+(Min(1160,Parent.Width-16)-52)*0.62
+  Y: =354
+  Width: =(Min(1160,Parent.Width-16)-52)*0.38
+  Height: =34
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal in ["drill","notes"]
+  OnSelect: =If(varV97RemoteReady && !varV97Syncing,If(IsBlank(varV97NoteKey),Notify("בחר יעד להערה",NotificationType.Warning),Set(varV97Syncing,true);Set(varV97EventEntity,"Notes");Set(varV97EventKey,varV97NoteKey);Set(varV97EventDeleted,IsBlank(Trim(V97Note.Text)));Set(varV97EventPayload,JSON({Key:varV97NoteKey,Text:V97Note.Text,At:Text(Now(),DateTimeFormat.UTC)},JSONFormat.Compact));Select(V97WriteEvent)),Notify("המתן לסיום הסנכרון או רענן מהצוות",NotificationType.Warning))
+### V97SectionNote [ModernText@1.0.0] parent=None
+  Text: ="הערה לכל הסעיף"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+(Min(1160,Parent.Width-16)-52)*0.62
+  Y: =398
+  Width: =(Min(1160,Parent.Width-16)-52)*0.38
+  Height: =34
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="drill"
+  OnSelect: =Set(varV97NoteKey,varV97Section);Reset(V97Note)
+### V97OpenSectionEvidence [ModernText@1.0.0] parent=None
+  Text: ="ראיות לסעיף"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+(Min(1160,Parent.Width-16)-52)*0.62
+  Y: =442
+  Width: =(Min(1160,Parent.Width-16)-52)*0.38
+  Height: =34
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="drill"
+  OnSelect: =Set(varV97EvidenceFilter,"section");Set(varV97Modal,"evidence");Reset(V97ModalSearch)
+### V97Notes [Gallery@2.15.0] parent=None
+  Items: =Filter(colV97Notes,IsBlank(V97ModalSearch.Text) || Lower(V97ModalSearch.Text) in Lower(Key & " " & Text))
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =132
+  Width: =(Min(1160,Parent.Width-16)-52)*0.58
+  Height: =Parent.Height-195
+  TemplateSize: =82
+  TemplatePadding: =0
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="notes"
+  DelayItemLoading: =true
+  TabIndex: =0
+  ShowScrollbar: =true
+### V97NotesRow [ModernText@1.0.0] parent=V97Notes
+  Text: =ThisItem.Key & Char(10) & ThisItem.Text
+  X: =0
+  Y: =0
+  Width: =Parent.TemplateWidth
+  Height: =78
+  Visible: =true
+  OnSelect: =Set(varV97NoteKey,ThisItem.Key);Reset(V97Note)
+### V97KpiSummary [ModernText@1.0.0] parent=None
+  Text: ="שוטף: " & If(IsBlank(LookUp(colV97Rows,RowId=varV97Section,Current)),"—",Text(LookUp(colV97Rows,RowId=varV97Section,Current),"#,##0.###","he-IL")) & " | השוואה: " & If(IsBlank(LookUp(colV97Rows,RowId=varV97Section,Prior)),"—",Text(LookUp(colV97Rows,RowId=varV97Section,Prior),"#,##0.###","he-IL")) & " | התאמות: " & If(IsBlank(Sum(Filter(colV97Rows,RowId=varV97Section),Current-Base)),"—",Text(Sum(Filter(colV97Rows,RowId=varV97Section),Current-Base),"#,##0.###","he-IL"))
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =85
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =50
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="kpi"
+### V97KpiParts [Gallery@2.15.0] parent=None
+  Items: =SortByColumns(AddColumns(Filter(colV97Components,RowId=varV97Section) As p,EffectiveAmount,If(IsBlank(p.Amount),Blank(),If(p.Period="current" && !IsBlank(p.Ref),If(p.Result,LookUp(colV97Rows,RowId=p.Ref,Current),p.Amount+p.Weight*(LookUp(colV97Rows,RowId=p.Ref,Current)-LookUp(colV97Base,RowId=p.Ref,Base))),p.Amount))),"Period",SortOrder.Descending,"Order",SortOrder.Ascending)
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =143
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =235
+  TemplateSize: =38
+  TemplatePadding: =0
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="kpi"
+  DelayItemLoading: =true
+  TabIndex: =0
+  ShowScrollbar: =true
+### V97KpiPart [ModernText@1.0.0] parent=V97KpiParts
+  Text: =If(ThisItem.Period="current",varV97Date,varV97PriorDate) & " | " & ThisItem.Operator & " " & ThisItem.Label & " : " & If(IsBlank(ThisItem.EffectiveAmount),"—",Text(ThisItem.EffectiveAmount,"#,##0.###","he-IL"))
+  X: =0
+  Y: =0
+  Width: =Parent.TemplateWidth
+  Height: =36
+  Visible: =true
+### V97KpiFormula [ModernText@1.0.0] parent=None
+  Text: =Coalesce(LookUp(colV97Components,RowId=varV97Section,Formula),"נוסחת המקור מפורטת להלן")&Char(10)&If(varV97Section in ["ratios_R12","ratios_R13"],"לא ניתן לחשב: אין עלות מכר בקלט",If(IsEmpty(colV97Entries),"רכיבים ותוצאה מתוך המקור; עשויים להיות פערי עיגול","רכיבי התקופה הנוכחית כוללים את השפעת הפקודות הידניות; ההשוואה נשמרת"))
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =382
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =60
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="kpi"
+### V97KpiRaw [Classic/TextInput@2.3.2] parent=None
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =450
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =Max(60,Parent.Height-510)
+  Default: =Concat(SortByColumns(AddColumns(Filter(colV97Components,RowId=varV97Section) As p,EffectiveAmount,If(IsBlank(p.Amount),Blank(),If(p.Period="current" && !IsBlank(p.Ref),If(p.Result,LookUp(colV97Rows,RowId=p.Ref,Current),p.Amount+p.Weight*(LookUp(colV97Rows,RowId=p.Ref,Current)-LookUp(colV97Base,RowId=p.Ref,Base))),p.Amount))),"Period",SortOrder.Descending,"Order",SortOrder.Ascending),If(Period="current",varV97Date,varV97PriorDate)&" | "&Label&If(Result," = ",": ")&If(IsBlank(EffectiveAmount),"—",Text(EffectiveAmount,"#,##0.###","he-IL")),Char(10))&If(!IsEmpty(colV97Entries),Char(10)&"הפירוט לעיל מחושב מהמצב הפעיל לאחר פקודות ידניות; מספרי JSON מקוריים אינם מוצגים כדי למנוע סתירה.","")
+  HintText: ="פירוט חישוב דינמי"
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="kpi"
+  DelayOutput: =true
+  HoverColor: =RGBA(219,227,238,1)
+  FocusedBorderThickness: =2
+  Mode: =TextMode.MultiLine
+  DisplayMode: =DisplayMode.View
+### V97Analysis [Gallery@2.15.0] parent=None
+  Items: =Switch(varV97Modal,"exceptions",ForAll(SortByColumns(AddColumns(Filter(colV97Candidates,(Abs(Delta)>=Max(0,IfError(Value(V97Min.Text),0)) && Abs(Percent)>=Max(0,IfError(Value(V97Pct.Text),0)) || IsNew || IsGone || IsRound || IsRepeated || IsReverse || !IsBlank(Classification)) && (IsReverse || Max(Abs(Current),Abs(Prior),Abs(Delta))>=Max(0,IfError(Value(V97Min.Text),0)) && Abs(Percent)>=Max(0,IfError(Value(V97Pct.Text),0))) && (IsBlank(V97ModalSearch.Text) || Lower(V97ModalSearch.Text) in Lower(Name&" "&Account&" "&Section)) && Switch(varV97ExceptionType,"material",Abs(Delta)>=Max(0,IfError(Value(V97Min.Text),0)) && Abs(Percent)>=Max(0,IfError(Value(V97Pct.Text),0)),"new",IsNew,"gone",IsGone,"round",IsRound,"repeat",IsRepeated,"reverse",IsReverse,"class",!IsBlank(Classification),true)) As e,Tags,If(Abs(Delta)>=Max(0,IfError(Value(V97Min.Text),0)) && Abs(Percent)>=Max(0,IfError(Value(V97Pct.Text),0)),"שינוי מהותי · ","")&If(e.IsNew,"חדש · ","")&If(e.IsGone,"אופס · ","")&If(e.IsRound,"עגול · ","")&If(e.IsRepeated,"חוזר · ","")&If(e.IsReverse,"יתרה הפוכה · ","")&e.Classification,RankValue,Max(Abs(e.Delta),Abs(e.Percent))),"RankValue",SortOrder.Descending) As e,{RowId:e.Section,NoteKey:If(e.Source="manual_entry",e.Section,e.Key),Name:e.Name,Account:e.Account,Section:e.ParentName,Current:e.Current,Prior:e.Prior,Delta:e.Delta,Tags:e.Tags,Detail:e.Detail,Checks:LookUp(colV97AuditProcedures,Section=e.Section,Checks)&Char(10)&If(e.Source in ["additional_entry","manual_entry"],"בדוק מ...[+1303]
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =136
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =Max(100,Parent.Height-290)
+  TemplateSize: =84
+  TemplatePadding: =0
+  Visible: =varV97Ready && varV97Modal in ["exec","exceptions","unchanged"]
+  DelayItemLoading: =true
+  TabIndex: =0
+  ShowScrollbar: =true
+### V97AnalysisName [ModernText@1.0.0] parent=V97Analysis
+  Text: =ThisItem.Name&" | "&ThisItem.Account&" | "&ThisItem.Section&Char(10)&Text(ThisItem.Current,"#,##0.###","he-IL")&" מול "&Text(ThisItem.Prior,"#,##0.###","he-IL")&" | שינוי: "&Text(ThisItem.Delta,"#,##0.###","he-IL")&Char(10)&ThisItem.Tags
+  X: =If(varV97Modal="exceptions",115,0)
+  Y: =0
+  Width: =Parent.TemplateWidth-If(varV97Modal="exceptions",115,0)
+  Height: =80
+  Visible: =true
+  OnSelect: =Set(varV97BackModal,varV97Modal);Set(varV97Section,ThisItem.RowId);Set(varV97NoteKey,ThisItem.NoteKey);Set(varV97DetailText,ThisItem.Detail);Reset(V97Note);Reset(V97ModalSearch);Set(varV97Modal,"drill")
+### V97AnalysisZero [ModernText@1.0.0] parent=V97Analysis
+  Text: =""
+  X: =Parent.TemplateWidth/2
+  Y: =58
+  Width: =1
+  Height: =18
+  Visible: =varV97Modal="charts"
+### V97AnalysisBar [ModernText@1.0.0] parent=V97Analysis
+  Text: =""
+  X: =Parent.TemplateWidth/2-If(ThisItem.Current<ThisItem.Prior,Abs(ThisItem.Current-ThisItem.Prior)/Max(1,Max(Sort(AddColumns(Filter(colV97Rows,Kind<>"section" && Page<>"ratios" && !IsBlank(Current) && !IsBlank(Prior) && (IsBlank(V97ModalSearch.Text) || Lower(V97ModalSearch.Text) in Lower(Name & " " & Code)) && Switch(varV97Modal,"unchanged",Current=Prior && Abs(Current)>=varV97Materiality,"exceptions",Abs(Current-Prior)>=Max(varV97Materiality,IfError(Value(V97Min.Text),0)),"exec",Abs(Current-Prior)>=IfError(Max(0,Value(V97Min.Text)),0),"charts",Page=If(varV97Page in ["settings","comparisons"],"balance",varV97Page),true) && (varV97Modal="unchanged" || IfError(Value(V97Pct.Text),0)<=0 || (Prior=0 && Current<>0) || (Prior<>0 && Abs(100*(Current-Prior)/Prior)>=IfError(Value(V97Pct.Text),0)))),Magnitude,Abs(Current-Prior)),Magnitude,SortOrder.Descending),Magnitude))*(Parent.TemplateWidth/2-14),0)
+  Y: =60
+  Width: =Abs(ThisItem.Current-ThisItem.Prior)/Max(1,Max(Sort(AddColumns(Filter(colV97Rows,Kind<>"section" && Page<>"ratios" && !IsBlank(Current) && !IsBlank(Prior) && (IsBlank(V97ModalSearch.Text) || Lower(V97ModalSearch.Text) in Lower(Name & " " & Code)) && Switch(varV97Modal,"unchanged",Current=Prior && Abs(Current)>=varV97Materiality,"exceptions",Abs(Current-Prior)>=Max(varV97Materiality,IfError(Value(V97Min.Text),0)),"exec",Abs(Current-Prior)>=IfError(Max(0,Value(V97Min.Text)),0),"charts",Page=If(varV97Page in ["settings","comparisons"],"balance",varV97Page),true) && (varV97Modal="unchanged" || IfError(Value(V97Pct.Text),0)<=0 || (Prior=0 && Current<>0) || (Prior<>0 && Abs(100*(Current-Prior)/Prior)>=IfError(Value(V97Pct.Text),0)))),Magnitude,Abs(Current-Prior)),Magnitude,SortOrder.Descending),Magnitude))*(Parent.TemplateWidth/2-14)
+  Height: =12
+  Visible: =varV97Modal="charts"
+### V97AccountAuditChecks [ModernText@1.0.0] parent=V97Analysis
+  Text: ="הצעות בדיקה"
+  X: =0
+  Y: =20
+  Width: =105
+  Height: =32
+  Visible: =varV97Modal="exceptions"
+  OnSelect: =Set(varV97ExportText,ThisItem.Name&" | "&ThisItem.Account&Char(10)&"הצעות לבדיקה — לא בדיקות שבוצעו"&Char(10)&ThisItem.Checks);Reset(V97Export);Set(varV97BackModal,"exceptions");Set(varV97Modal,"copy")
+### V97AnalysisNote [ModernText@1.0.0] parent=None
+  Text: =If(varV97Modal="exceptions","סימני חריגה הם הצעות לבדיקה; לחיצה פותחת את החשבון והמקור",If(varV97Modal="exec","9 שינויים לפי סכום + מועמד עשירי לפי אחוז, בהתאם לתבנית","יתרות ללא שינוי ברמת סעיף וחשבון; אפסים אינם מוצגים"))
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =Parent.Height-142
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =48
+  Visible: =varV97Ready && varV97Modal in ["exceptions","exec","unchanged"]
+### V97Issues [Gallery@2.15.0] parent=None
+  Items: =colV97RuntimeIssues
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =145
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =Parent.Height-215
+  TemplateSize: =118
+  TemplatePadding: =0
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="errors"
+  DelayItemLoading: =true
+  TabIndex: =0
+  ShowScrollbar: =true
+### V97IssueText [ModernText@1.0.0] parent=V97Issues
+  Text: =ThisItem.Severity & " | " & ThisItem.Type & Char(10) & ThisItem.Name
+  X: =0
+  Y: =0
+  Width: =Parent.TemplateWidth
+  Height: =112
+  Visible: =true
+### V97IssueSummary [ModernText@1.0.0] parent=None
+  Text: ="שורות דוח: " & CountRows(colV97Base) & " | שורות מקור: " & CountRows(colV97Drill) & " | מסמכים: " & CountRows(colV97Documents) & Char(10) & "פער מאזן: " & If(IsBlank(LookUp(colV97Rows,RowId="balance_total_assets",Current)-LookUp(colV97Rows,RowId="balance_total_liabilities_equity",Current)),"—",Text(LookUp(colV97Rows,RowId="balance_total_assets",Current)-LookUp(colV97Rows,RowId="balance_total_liabilities_equity",Current),"#,##0.###","he-IL")) & " | אזהרות המקור ובקרות חיות מוצגות להלן"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =83
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =57
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="errors"
+### V97Insights [Gallery@2.15.0] parent=None
+  Items: =colV97Insights
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =145
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =Parent.Height-210
+  TemplateSize: =142
+  TemplatePadding: =0
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="insights"
+  DelayItemLoading: =true
+  TabIndex: =0
+  ShowScrollbar: =true
+### V97InsightText [ModernText@1.0.0] parent=V97Insights
+  Text: =ThisItem.Name
+  X: =0
+  Y: =0
+  Width: =Parent.TemplateWidth
+  Height: =135
+  Visible: =true
+### V97InsightWarning [ModernText@1.0.0] parent=None
+  Text: ="אלה תובנות המקור, לפני הפקודות הידניות. לא מחובר כאן מודל AI."
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =85
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =46
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="insights"
+### V97FxMin [Classic/TextInput@2.3.2] parent=None
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+(Min(1160,Parent.Width-16)-52)*0.53
+  Y: =84
+  Width: =110
+  Height: =34
+  Default: =""
+  HintText: ="שער מזערי — ריק להכול"
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="fx"
+  DelayOutput: =true
+  HoverColor: =RGBA(219,227,238,1)
+  FocusedBorderThickness: =2
+### V97FxMax [Classic/TextInput@2.3.2] parent=None
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+(Min(1160,Parent.Width-16)-52)*0.73
+  Y: =84
+  Width: =110
+  Height: =34
+  Default: =""
+  HintText: ="שער מרבי — ריק להכול"
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="fx"
+  DelayOutput: =true
+  HoverColor: =RGBA(219,227,238,1)
+  FocusedBorderThickness: =2
+### V97Fx [Gallery@2.15.0] parent=None
+  Items: =Filter(colV97Drill,HasFx && (IsBlank(V97ModalSearch.Text) || Lower(V97ModalSearch.Text) in Lower(Name & " " & Account)) && (IsBlank(Trim(V97FxMin.Text)) || Rate>=IfError(Value(V97FxMin.Text),0)) && (IsBlank(Trim(V97FxMax.Text)) || Rate<=IfError(Value(V97FxMax.Text),0)))
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =142
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =Parent.Height-205
+  TemplateSize: =64
+  TemplatePadding: =0
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="fx"
+  DelayItemLoading: =true
+  TabIndex: =0
+  ShowScrollbar: =true
+### V97FxRow [ModernText@1.0.0] parent=V97Fx
+  Text: =ThisItem.Account & " | " & ThisItem.Name & Char(10) & ThisItem.OtherCurrency & " " & If(IsBlank(ThisItem.OtherCurrent),"—",Text(ThisItem.OtherCurrent,"#,##0.###","he-IL")) & " | שער: " & If(IsBlank(ThisItem.Rate),"—",Text(ThisItem.Rate,"#,##0.###","he-IL"))
+  X: =0
+  Y: =0
+  Width: =Parent.TemplateWidth
+  Height: =60
+  Visible: =true
+### V97FxEmpty [ModernText@1.0.0] parent=None
+  Text: ="בקובץ המקור שסופק אין נתוני FX Audit. שם חשבון במט״ח אינו מספיק כדי לחשב שער או הפרש."
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =146
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =90
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="fx" && CountIf(colV97Drill,HasFx)=0
+### V97EntryHelp [ModernText@1.0.0] parent=None
+  Text: ="סכום ביחידות הדוח. חובה וזכות נשמרות כפקודה אחת. השוואה נשארת ללא שינוי."
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =124
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =32
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="additional"
+### V97DebitLabel [ModernText@1.0.0] parent=None
+  Text: ="חובה" & ": " & Coalesce(LookUp(colV97Rows,RowId=varV97Debit,Name),"בחר סעיף")
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+(Min(1160,Parent.Width-16)-52)*0
+  Y: =158
+  Width: =(Min(1160,Parent.Width-16)-52)*0.31
+  Height: =42
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="additional"
+### V97DebitOptions [Gallery@2.15.0] parent=None
+  Items: =Filter(colV97Base,CanPost && (IsBlank(V97ModalSearch.Text) || Lower(V97ModalSearch.Text) in Lower(Name & " " & Code)))
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+(Min(1160,Parent.Width-16)-52)*0
+  Y: =202
+  Width: =(Min(1160,Parent.Width-16)-52)*0.31
+  Height: =152
+  TemplateSize: =33
+  TemplatePadding: =0
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="additional"
+  DelayItemLoading: =true
+  TabIndex: =0
+  ShowScrollbar: =true
+### V97DebitChoice [ModernText@1.0.0] parent=V97DebitOptions
+  Text: =ThisItem.Name & " [" & ThisItem.Code & "]"
+  X: =0
+  Y: =0
+  Width: =Parent.TemplateWidth
+  Height: =31
+  Visible: =true
+  OnSelect: =Set(varV97Debit,ThisItem.RowId)
+### V97CreditLabel [ModernText@1.0.0] parent=None
+  Text: ="זכות" & ": " & Coalesce(LookUp(colV97Rows,RowId=varV97Credit,Name),"בחר סעיף")
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+(Min(1160,Parent.Width-16)-52)*0.33
+  Y: =158
+  Width: =(Min(1160,Parent.Width-16)-52)*0.31
+  Height: =42
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="additional"
+### V97CreditOptions [Gallery@2.15.0] parent=None
+  Items: =Filter(colV97Base,CanPost && (IsBlank(V97ModalSearch.Text) || Lower(V97ModalSearch.Text) in Lower(Name & " " & Code)))
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+(Min(1160,Parent.Width-16)-52)*0.33
+  Y: =202
+  Width: =(Min(1160,Parent.Width-16)-52)*0.31
+  Height: =152
+  TemplateSize: =33
+  TemplatePadding: =0
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="additional"
+  DelayItemLoading: =true
+  TabIndex: =0
+  ShowScrollbar: =true
+### V97CreditChoice [ModernText@1.0.0] parent=V97CreditOptions
+  Text: =ThisItem.Name & " [" & ThisItem.Code & "]"
+  X: =0
+  Y: =0
+  Width: =Parent.TemplateWidth
+  Height: =31
+  Visible: =true
+  OnSelect: =Set(varV97Credit,ThisItem.RowId)
+### V97AmountLabel [ModernText@1.0.0] parent=None
+  Text: ="סכום"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+(Min(1160,Parent.Width-16)-52)*0.66
+  Y: =160
+  Width: =(Min(1160,Parent.Width-16)-52)*0.34
+  Height: =22
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="additional"
+### V97Amount [Classic/TextInput@2.3.2] parent=None
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+(Min(1160,Parent.Width-16)-52)*0.66
+  Y: =185
+  Width: =(Min(1160,Parent.Width-16)-52)*0.34
+  Height: =34
+  Default: =""
+  HintText: ="סכום חיובי"
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="additional"
+  DelayOutput: =false
+  HoverColor: =RGBA(219,227,238,1)
+  FocusedBorderThickness: =2
+### V97DescLabel [ModernText@1.0.0] parent=None
+  Text: ="תיאור הפקודה"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+(Min(1160,Parent.Width-16)-52)*0.66
+  Y: =222
+  Width: =(Min(1160,Parent.Width-16)-52)*0.34
+  Height: =22
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="additional"
+### V97Description [Classic/TextInput@2.3.2] parent=None
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+(Min(1160,Parent.Width-16)-52)*0.66
+  Y: =247
+  Width: =(Min(1160,Parent.Width-16)-52)*0.34
+  Height: =34
+  Default: =""
+  HintText: ="תיאור חובה"
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="additional"
+  DelayOutput: =false
+  HoverColor: =RGBA(219,227,238,1)
+  FocusedBorderThickness: =2
+### V97ReferenceLabel [ModernText@1.0.0] parent=None
+  Text: ="אסמכתא"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+(Min(1160,Parent.Width-16)-52)*0.66
+  Y: =284
+  Width: =(Min(1160,Parent.Width-16)-52)*0.34
+  Height: =22
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="additional"
+### V97Reference [Classic/TextInput@2.3.2] parent=None
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+(Min(1160,Parent.Width-16)-52)*0.66
+  Y: =309
+  Width: =(Min(1160,Parent.Width-16)-52)*0.34
+  Height: =34
+  Default: =""
+  HintText: ="אסמכתא אופציונלית"
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="additional"
+  DelayOutput: =true
+  HoverColor: =RGBA(219,227,238,1)
+  FocusedBorderThickness: =2
+### V97Flowoperating [ModernText@1.0.0] parent=None
+  Text: ="שוטפת"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+0*(Min(1160,Parent.Width-16)-40)/4
+  Y: =367
+  Width: =(Min(1160,Parent.Width-16)-40)/4-6
+  Height: =34
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="additional"
+  OnSelect: =Set(varV97Flow,"operating")
+### V97Flowinvesting [ModernText@1.0.0] parent=None
+  Text: ="השקעה"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+1*(Min(1160,Parent.Width-16)-40)/4
+  Y: =367
+  Width: =(Min(1160,Parent.Width-16)-40)/4-6
+  Height: =34
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="additional"
+  OnSelect: =Set(varV97Flow,"investing")
+### V97Flowfinancing [ModernText@1.0.0] parent=None
+  Text: ="מימון"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+2*(Min(1160,Parent.Width-16)-40)/4
+  Y: =367
+  Width: =(Min(1160,Parent.Width-16)-40)/4-6
+  Height: =34
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="additional"
+  OnSelect: =Set(varV97Flow,"financing")
+### V97Flownoncash [ModernText@1.0.0] parent=None
+  Text: ="ללא מזומן"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+3*(Min(1160,Parent.Width-16)-40)/4
+  Y: =367
+  Width: =(Min(1160,Parent.Width-16)-40)/4-6
+  Height: =34
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="additional"
+  OnSelect: =Set(varV97Flow,"noncash")
+### V97Post [ModernText@1.0.0] parent=None
+  Text: ="הוסף פקודה מאוזנת"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =410
+  Width: =230
+  Height: =38
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="additional"
+  OnSelect: =If(varV97RemoteReady && !varV97Syncing,With({a:IfError(Value(V97Amount.Text),Blank()),de:LookUp(colV97Base,RowId=varV97Debit),cr:LookUp(colV97Base,RowId=varV97Credit)},If(IsBlank(a) || a<=0 || a>1000000000000 || IsBlank(Trim(V97Description.Text)) || !de.CanPost || !cr.CanPost || IsBlank(varV97Debit) || IsBlank(varV97Credit) || varV97Debit=varV97Credit,Notify("נדרשים סכום חיובי, תיאור ושני סעיפים שונים",NotificationType.Error),With({cash:a*(If(de.Cash,1,0)-If(cr.Cash,1,0))},If(cash<>0 && varV97Flow="noncash",Notify("פקודה המשנה מזומן חייבת סיווג פעילות",NotificationType.Error),With({id:Text(GUID()),at:Text(Now(),DateTimeFormat.UTC)},Set(varV97Syncing,true);Set(varV97EventEntity,"Entries");Set(varV97EventKey,id);Set(varV97EventDeleted,false);Set(varV97EventPayload,JSON({Id:id,Debit:varV97Debit,Credit:varV97Credit,Amount:a,Description:Trim(V97Description.Text),Reference:V97Reference.Text,Flow:varV97Flow,CashDelta:cash,At:at},JSONFormat.Compact));Select(V97WriteEvent)))))),Notify("המתן לסיום הסנכרון או רענן מהצוות",NotificationType.Warning))
+### V97JournalCount [ModernText@1.0.0] parent=None
+  Text: ="פקודות ידניות: " & CountRows(colV97Entries) & " | מקור: " & CountIf(colV97Drill,Source="additional_entry")
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+260
+  Y: =410
+  Width: =Min(1160,Parent.Width-16)-285
+  Height: =38
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="additional"
+### V97Journal [Gallery@2.15.0] parent=None
+  Items: =Filter(colV97Entries,IsBlank(V97ModalSearch.Text) || Lower(V97ModalSearch.Text) in Lower(Description & " " & Reference))
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =460
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =If(varV97EntryFilter="manual",Max(50,Parent.Height-505),Max(50,(Parent.Height-540)/2))
+  TemplateSize: =62
+  TemplatePadding: =0
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="additional"
+  DelayItemLoading: =true
+  TabIndex: =0
+  ShowScrollbar: =true
+### V97JournalText [ModernText@1.0.0] parent=V97Journal
+  Text: =ThisItem.Description & " | " & If(IsBlank(ThisItem.Amount),"—",Text(ThisItem.Amount,"#,##0.###","he-IL")) & Char(10) & LookUp(colV97Base,RowId=ThisItem.Debit,Name) & " ← " & LookUp(colV97Base,RowId=ThisItem.Credit,Name) & " | " & ThisItem.Reference
+  X: =62
+  Y: =0
+  Width: =Parent.TemplateWidth-62
+  Height: =58
+  Visible: =true
+### V97JournalDelete [ModernText@1.0.0] parent=V97Journal
+  Text: ="מחק"
+  X: =0
+  Y: =8
+  Width: =56
+  Height: =34
+  Visible: =true
+  OnSelect: =Set(varV97DeleteId,ThisItem.Id);Set(varV97Modal,"deleteconfirm")
+### V97SourceEntries [Gallery@2.15.0] parent=None
+  Items: =Filter(colV97Drill,Source="additional_entry" && (IsBlank(V97ModalSearch.Text) || Lower(V97ModalSearch.Text) in Lower(Name & " " & Account)))
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =460+Max(50,(Parent.Height-540)/2)+10
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =Max(40,(Parent.Height-540)/2)
+  TemplateSize: =42
+  TemplatePadding: =0
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="additional" && varV97EntryFilter="all"
+  DelayItemLoading: =true
+  TabIndex: =0
+  ShowScrollbar: =true
+### V97SourceEntryText [ModernText@1.0.0] parent=V97SourceEntries
+  Text: =ThisItem.Account & " | " & ThisItem.Name & " | " & If(IsBlank(ThisItem.Current),"—",Text(ThisItem.Current,"#,##0.###","he-IL")) & " / " & If(IsBlank(ThisItem.Prior),"—",Text(ThisItem.Prior,"#,##0.###","he-IL"))
+  X: =0
+  Y: =0
+  Width: =Parent.TemplateWidth
+  Height: =38
+  Visible: =true
+### V97Confirmdeleteconfirm [ModernText@1.0.0] parent=None
+  Text: ="למחוק את הפקודה הנבחרת ולחשב מחדש?"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =110
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =70
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="deleteconfirm"
+### V97ConfirmYesdeleteconfirm [ModernText@1.0.0] parent=None
+  Text: ="המשך"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =195
+  Width: =150
+  Height: =34
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="deleteconfirm"
+  OnSelect: =If(varV97RemoteReady && !varV97Syncing,Set(varV97Syncing,true);Set(varV97EventEntity,"Entries");Set(varV97EventKey,varV97DeleteId);Set(varV97EventDeleted,true);Set(varV97EventPayload,JSON({Id:varV97DeleteId},JSONFormat.Compact));Select(V97WriteEvent);Set(varV97Modal,"additional"),Notify("המתן לסיום הסנכרון או רענן מהצוות",NotificationType.Warning))
+### V97ConfirmNodeleteconfirm [ModernText@1.0.0] parent=None
+  Text: ="ביטול"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+185
+  Y: =195
+  Width: =150
+  Height: =34
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="deleteconfirm"
+  OnSelect: =Set(varV97Modal,"additional")
+### V97Confirmrestoreconfirm [ModernText@1.0.0] parent=None
+  Text: ="טעינה תחליף שינויים שטרם גובו. להמשיך?"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =110
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =70
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="restoreconfirm"
+### V97ConfirmYesrestoreconfirm [ModernText@1.0.0] parent=None
+  Text: ="המשך"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =195
+  Width: =150
+  Height: =34
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="restoreconfirm"
+  OnSelect: =Select(V97LoadLocal)
+### V97ConfirmNorestoreconfirm [ModernText@1.0.0] parent=None
+  Text: ="ביטול"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+185
+  Y: =195
+  Width: =150
+  Height: =34
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="restoreconfirm"
+  OnSelect: =Set(varV97Modal,"")
+### V97EvidenceFilterall [ModernText@1.0.0] parent=None
+  Text: ="הכול"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+0*(Min(1160,Parent.Width-16)-40)/4
+  Y: =126
+  Width: =(Min(1160,Parent.Width-16)-40)/4-6
+  Height: =30
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="evidence"
+  OnSelect: =Set(varV97EvidenceFilter,"all")
+### V97EvidenceFilterattention [ModernText@1.0.0] parent=None
+  Text: ="לטיפול"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+1*(Min(1160,Parent.Width-16)-40)/4
+  Y: =126
+  Width: =(Min(1160,Parent.Width-16)-40)/4-6
+  Height: =30
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="evidence"
+  OnSelect: =Set(varV97EvidenceFilter,"attention")
+### V97EvidenceFilterhandled [ModernText@1.0.0] parent=None
+  Text: ="טופל"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+2*(Min(1160,Parent.Width-16)-40)/4
+  Y: =126
+  Width: =(Min(1160,Parent.Width-16)-40)/4-6
+  Height: =30
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="evidence"
+  OnSelect: =Set(varV97EvidenceFilter,"handled")
+### V97EvidenceFiltersection [ModernText@1.0.0] parent=None
+  Text: ="סעיף נבחר"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+3*(Min(1160,Parent.Width-16)-40)/4
+  Y: =126
+  Width: =(Min(1160,Parent.Width-16)-40)/4-6
+  Height: =30
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="evidence"
+  OnSelect: =Set(varV97EvidenceFilter,"section")
+### V97Evidence [Gallery@2.15.0] parent=None
+  Items: =Switch(varV97EvidenceSort,"amount",Sort(Filter(AddColumns(colV97EvidenceView As m,EffectiveStatus,Coalesce(LookUp(colV97Reviews,Key=m.Key,Status),m.AutoStatus)) As e,(IsBlank(V97ModalSearch.Text) || Lower(V97ModalSearch.Text) in Lower(e.Name & " " & e.Account & " " & LookUp(colV97Documents,DocId=e.DocId,Name))) && Switch(varV97EvidenceFilter,"attention",!(e.EffectiveStatus in ["תואם","טופל"]),"handled",e.EffectiveStatus="טופל","section",e.Section=varV97Section,true)),Abs(DocAmount),SortOrder.Descending),"difference",Sort(Filter(AddColumns(colV97EvidenceView As m,EffectiveStatus,Coalesce(LookUp(colV97Reviews,Key=m.Key,Status),m.AutoStatus)) As e,(IsBlank(V97ModalSearch.Text) || Lower(V97ModalSearch.Text) in Lower(e.Name & " " & e.Account & " " & LookUp(colV97Documents,DocId=e.DocId,Name))) && Switch(varV97EvidenceFilter,"attention",!(e.EffectiveStatus in ["תואם","טופל"]),"handled",e.EffectiveStatus="טופל","section",e.Section=varV97Section,true)),Abs(Difference),SortOrder.Descending),Filter(AddColumns(colV97EvidenceView As m,EffectiveStatus,Coalesce(LookUp(colV97Reviews,Key=m.Key,Status),m.AutoStatus)) As e,(IsBlank(V97ModalSearch.Text) || Lower(V97ModalSearch.Text) in Lower(e.Name & " " & e.Account & " " & LookUp(colV97Documents,DocId=e.DocId,Name))) && Switch(varV97EvidenceFilter,"attention",!(e.EffectiveStatus in ["תואם","טופל"]),"handled",e.EffectiveStatus="טופל","section",e.Section=varV97Section,true)))
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =164
+  Width: =(Min(1160,Parent.Width-16)-52)*0.55
+  Height: =Max(100,Parent.Height-455)
+  TemplateSize: =78
+  TemplatePadding: =0
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="evidence"
+  DelayItemLoading: =true
+  TabIndex: =0
+  ShowScrollbar: =true
+### V97EvidenceRow [ModernText@1.0.0] parent=V97Evidence
+  Text: =ThisItem.DocId & " | " & ThisItem.Name & " " & ThisItem.Account & Char(10) & ThisItem.EffectiveStatus & " | מסמך: " & If(IsBlank(ThisItem.DocAmount),"—",Text(ThisItem.DocAmount,"#,##0.###","he-IL")) & " | ספרים: " & If(IsBlank(ThisItem.BookAmount),"—",Text(ThisItem.BookAmount,"#,##0.###","he-IL")) & " | פער מקור: " & If(IsBlank(ThisItem.Difference),"—",Text(ThisItem.Difference,"#,##0.###","he-IL"))
+  X: =0
+  Y: =0
+  Width: =Parent.TemplateWidth
+  Height: =74
+  Visible: =true
+  OnSelect: =Set(varV97EvidenceKey,ThisItem.Key);Set(varV97Doc,ThisItem.DocId);Set(varV97Section,ThisItem.Section);Set(varV97EvidenceDetail,ThisItem.Detail);Reset(V97EvidenceNote);Reset(V97EvidenceUrl);Reset(V97EvidenceRaw)
+### V97EvidenceSelected [ModernText@1.0.0] parent=None
+  Text: =Coalesce(LookUp(colV97Documents,DocId=varV97Doc,Name),"בחר התאמה או מסמך")
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+(Min(1160,Parent.Width-16)-52)*0.58
+  Y: =164
+  Width: =(Min(1160,Parent.Width-16)-52)*0.42
+  Height: =52
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="evidence"
+### V97EvidenceNote [Classic/TextInput@2.3.2] parent=None
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+(Min(1160,Parent.Width-16)-52)*0.58
+  Y: =222
+  Width: =(Min(1160,Parent.Width-16)-52)*0.42
+  Height: =65
+  Default: =Coalesce(LookUp(colV97Reviews,Key=varV97EvidenceKey,Note),"")
+  HintText: ="הערת טיפול לראיה"
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="evidence"
+  DelayOutput: =true
+  HoverColor: =RGBA(219,227,238,1)
+  FocusedBorderThickness: =2
+  Mode: =TextMode.MultiLine
+### V97Review0 [ModernText@1.0.0] parent=None
+  Text: ="טופל"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+(Min(1160,Parent.Width-16)-52)*0.58+0*((Min(1160,Parent.Width-16)-52)*0.42)/3
+  Y: =298
+  Width: =((Min(1160,Parent.Width-16)-52)*0.42)/3-5
+  Height: =30
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="evidence"
+  OnSelect: =If(varV97RemoteReady && !varV97Syncing,If(IsBlank(LookUp(colV97EvidenceView,Key=varV97EvidenceKey)),Notify("בחר ראיה",NotificationType.Warning),Set(varV97Syncing,true);Set(varV97EventEntity,"Reviews");Set(varV97EventKey,varV97EvidenceKey);Set(varV97EventDeleted,false);Set(varV97EventPayload,JSON({Key:varV97EvidenceKey,Status:"טופל",Note:V97EvidenceNote.Text,At:Text(Now(),DateTimeFormat.UTC)},JSONFormat.Compact));Select(V97WriteEvent)),Notify("המתן לסיום הסנכרון או רענן מהצוות",NotificationType.Warning))
+### V97Review1 [ModernText@1.0.0] parent=None
+  Text: ="דורש בדיקה"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+(Min(1160,Parent.Width-16)-52)*0.58+1*((Min(1160,Parent.Width-16)-52)*0.42)/3
+  Y: =298
+  Width: =((Min(1160,Parent.Width-16)-52)*0.42)/3-5
+  Height: =30
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="evidence"
+  OnSelect: =If(varV97RemoteReady && !varV97Syncing,If(IsBlank(LookUp(colV97EvidenceView,Key=varV97EvidenceKey)),Notify("בחר ראיה",NotificationType.Warning),Set(varV97Syncing,true);Set(varV97EventEntity,"Reviews");Set(varV97EventKey,varV97EvidenceKey);Set(varV97EventDeleted,false);Set(varV97EventPayload,JSON({Key:varV97EvidenceKey,Status:"דורש בדיקה",Note:V97EvidenceNote.Text,At:Text(Now(),DateTimeFormat.UTC)},JSONFormat.Compact));Select(V97WriteEvent)),Notify("המתן לסיום הסנכרון או רענן מהצוות",NotificationType.Warning))
+### V97Review2 [ModernText@1.0.0] parent=None
+  Text: ="אוטומטי"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+(Min(1160,Parent.Width-16)-52)*0.58+2*((Min(1160,Parent.Width-16)-52)*0.42)/3
+  Y: =298
+  Width: =((Min(1160,Parent.Width-16)-52)*0.42)/3-5
+  Height: =30
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="evidence"
+  OnSelect: =If(varV97RemoteReady && !varV97Syncing,If(IsBlank(LookUp(colV97EvidenceView,Key=varV97EvidenceKey)),Notify("בחר ראיה",NotificationType.Warning),Set(varV97Syncing,true);Set(varV97EventEntity,"Reviews");Set(varV97EventKey,varV97EvidenceKey);Set(varV97EventDeleted,true);Set(varV97EventPayload,JSON({Key:varV97EvidenceKey,Status:"אוטומטי",Note:V97EvidenceNote.Text,At:Text(Now(),DateTimeFormat.UTC)},JSONFormat.Compact));Select(V97WriteEvent)),Notify("המתן לסיום הסנכרון או רענן מהצוות",NotificationType.Warning))
+### V97EvidenceUrl [Classic/TextInput@2.3.2] parent=None
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+(Min(1160,Parent.Width-16)-52)*0.58
+  Y: =340
+  Width: =(Min(1160,Parent.Width-16)-52)*0.42
+  Height: =34
+  Default: =Coalesce(LookUp(colV97Urls,DocId=varV97Doc,Url),LookUp(colV97Documents,DocId=varV97Doc,Url),"")
+  HintText: ="כתובת HTTPS מדויקת למסמך"
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="evidence"
+  DelayOutput: =true
+  HoverColor: =RGBA(219,227,238,1)
+  FocusedBorderThickness: =2
+### V97SetUrl [ModernText@1.0.0] parent=None
+  Text: ="שמור קישור"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+(Min(1160,Parent.Width-16)-52)*0.58
+  Y: =384
+  Width: =((Min(1160,Parent.Width-16)-52)*0.42)/2-4
+  Height: =30
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="evidence"
+  OnSelect: =If(varV97RemoteReady && !varV97Syncing,If(IsBlank(varV97Doc) || !StartsWith(Lower(Trim(V97EvidenceUrl.Text)),"https://"),Notify("בחר מסמך והזן כתובת HTTPS מלאה",NotificationType.Error),Set(varV97Syncing,true);Set(varV97EventEntity,"Urls");Set(varV97EventKey,varV97Doc);Set(varV97EventDeleted,false);Set(varV97EventPayload,JSON({DocId:varV97Doc,Url:Trim(V97EvidenceUrl.Text)},JSONFormat.Compact));Select(V97WriteEvent)),Notify("המתן לסיום הסנכרון או רענן מהצוות",NotificationType.Warning))
+### V97OpenDoc [ModernText@1.0.0] parent=None
+  Text: ="פתח מסמך"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+(Min(1160,Parent.Width-16)-52)*0.58+((Min(1160,Parent.Width-16)-52)*0.42)/2
+  Y: =384
+  Width: =((Min(1160,Parent.Width-16)-52)*0.42)/2
+  Height: =30
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="evidence"
+  OnSelect: =With({u:Coalesce(LookUp(colV97Urls,DocId=varV97Doc,Url),LookUp(colV97Documents,DocId=varV97Doc,Url))},If(StartsWith(Lower(u),"https://"),IfError(Launch(u),Notify("לא ניתן לפתוח את הקישור",NotificationType.Error)),Notify("לא הוגדר קישור HTTPS למסמך הזה",NotificationType.Warning)))
+### V97EvidenceRaw [Classic/TextInput@2.3.2] parent=None
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+(Min(1160,Parent.Width-16)-52)*0.58
+  Y: =444
+  Width: =(Min(1160,Parent.Width-16)-52)*0.42
+  Height: =Max(70,Parent.Height-503)
+  Default: =If(IsBlank(varV97EvidenceDetail),"",IfError(With({m:ParseJSON(varV97EvidenceDetail)},If(!IsBlank(Text(m.matchReason)),Text(m.matchReason)&Char(10)&"ביטחון: "&Coalesce(Text(m.confidence),"—")&Char(10)&"סטטוס: "&Coalesce(Text(m.numericCheck.status),"—")&Char(10)&"מסמך: "&Coalesce(Text(m.numericCheck.documentAmount),"—")&" "&Coalesce(Text(m.numericCheck.documentCurrency),"")&Char(10)&"דשבורד: "&Coalesce(Text(m.numericCheck.jsonAmount),"—")&Char(10)&"פער: "&Coalesce(Text(m.numericCheck.difference),"—")&Char(10)&Coalesce(Text(m.numericCheck.note),"")&If(!IsBlank(m.evidenceForMatch),Char(10)&Concat(Table(m.evidenceForMatch),"• "&Text(Value),Char(10)),""),"שיוך ידני"&Char(10)&"מסמך: "&Coalesce(Text(m.DocId),varV97Doc)&Char(10)&"סעיף: "&Coalesce(Text(m.Section),varV97Section)&Char(10)&"חשבון: "&Coalesce(Text(m.Account),"—")&Char(10)&Coalesce(Text(m.Name),""))),"לא ניתן לפענח את פרטי הראיה; ניתן לפתוח את מסמך המקור."))
+  HintText: ="פרטי הראיה והנימוק"
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="evidence"
+  DelayOutput: =true
+  HoverColor: =RGBA(219,227,238,1)
+  FocusedBorderThickness: =2
+  Mode: =TextMode.MultiLine
+  DisplayMode: =DisplayMode.View
+### V97DocumentsLabel [ModernText@1.0.0] parent=None
+  Text: ="כל המסמכים — לחיצה מציגה את המידע המלא"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =Parent.Height-275
+  Width: =(Min(1160,Parent.Width-16)-52)*0.55
+  Height: =26
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="evidence"
+### V97Documents [Gallery@2.15.0] parent=None
+  Items: =Filter(colV97Documents,IsBlank(V97ModalSearch.Text) || Lower(V97ModalSearch.Text) in Lower(Name & " " & DocId))
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =Parent.Height-246
+  Width: =(Min(1160,Parent.Width-16)-52)*0.55
+  Height: =122
+  TemplateSize: =37
+  TemplatePadding: =0
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="evidence"
+  DelayItemLoading: =true
+  TabIndex: =0
+  ShowScrollbar: =true
+### V97DocumentRow [ModernText@1.0.0] parent=V97Documents
+  Text: =ThisItem.DocId & " | " & ThisItem.Name
+  X: =0
+  Y: =0
+  Width: =Parent.TemplateWidth
+  Height: =35
+  Visible: =true
+  OnSelect: =Set(varV97Doc,ThisItem.DocId);Set(varV97EvidenceKey,"");Set(varV97EvidenceDetail,ThisItem.Detail);Reset(V97EvidenceRaw);Reset(V97EvidenceUrl);Reset(V97EvidenceNote)
+### V97EvidenceHistory [ModernText@1.0.0] parent=None
+  Text: ="היסטוריית טיפול"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =Parent.Height-112
+  Width: =(Min(1160,Parent.Width-16)-52)*0.27
+  Height: =32
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="evidence"
+  OnSelect: =Set(varV97ExportText,Concat(Filter(colV97History,IsBlank(varV97EvidenceKey) || Key=varV97EvidenceKey),At & " | " & User & " | " & Key & " | " & Action,Char(10)));Reset(V97Export);Set(varV97Modal,"copy")
+### V97ManualLink [ModernText@1.0.0] parent=None
+  Text: ="שיוכים ידניים"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+26+(Min(1160,Parent.Width-16)-52)*0.27
+  Y: =Parent.Height-112
+  Width: =(Min(1160,Parent.Width-16)-52)*0.27
+  Height: =32
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="evidence"
+  OnSelect: =Set(varV97LinkAccount,"");Set(varV97Modal,"links");Reset(V97LinkAccount)
+### V97EvidenceBaseNote [ModernText@1.0.0] parent=None
+  Text: ="בדיקות המסמך הן מהמקור, לפני התאמות. שינוי ידני אינו אישור להתאמת ראיה."
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+215
+  Y: =Parent.Height-74
+  Width: =(Min(1160,Parent.Width-16)-52)*0.55-195
+  Height: =42
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="evidence"
+### V97LinkIntro [ModernText@1.0.0] parent=None
+  Text: ="מסמך: "&varV97Doc&Char(10)&"בחר חשבון Drill-down ברשימה. השיוך הידני אינו בדיקה מספרית וניתן להסרה בכל עת."
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =86
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =70
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="links"
+### V97LinkAccount [Classic/TextInput@2.3.2] parent=None
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =164
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =34
+  Default: =varV97LinkAccount
+  HintText: ="בחר חשבון מהרשימה או הזן מספר חשבון מדויק"
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="links"
+  DelayOutput: =true
+  HoverColor: =RGBA(219,227,238,1)
+  FocusedBorderThickness: =2
+### V97LinkAdd [ModernText@1.0.0] parent=None
+  Text: ="הוסף שיוך"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =214
+  Width: =150
+  Height: =34
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="links"
+  OnSelect: =If(varV97RemoteReady && !varV97Syncing,With({a:Trim(V97LinkAccount.Text),k:varV97Doc&"|"&varV97Section&"|"&Trim(V97LinkAccount.Text)},If(IsBlank(LookUp(colV97Documents,DocId=varV97Doc)) || IsBlank(a) || IsBlank(LookUp(colV97AllDrill,Section=varV97Section && Account=a)),Notify("בחר מסמך וחשבון Drill-down תקינים",NotificationType.Error),Set(varV97Syncing,true);Set(varV97EventEntity,"Links");Set(varV97EventKey,k);Set(varV97EventDeleted,false);Set(varV97EventPayload,JSON({Key:k,DocId:varV97Doc,Section:varV97Section,Account:a,Name:LookUp(colV97Rows,RowId=varV97Section,Name)},JSONFormat.Compact));Select(V97WriteEvent))),Notify("המתן לסיום הסנכרון או רענן מהצוות",NotificationType.Warning))
+### V97Links [Gallery@2.15.0] parent=None
+  Items: =colV97Links
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =266
+  Width: =(Min(1160,Parent.Width-16)-52)*0.58
+  Height: =Parent.Height-330
+  TemplateSize: =46
+  TemplatePadding: =0
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="links"
+  DelayItemLoading: =true
+  TabIndex: =0
+  ShowScrollbar: =true
+### V97LinkText [ModernText@1.0.0] parent=V97Links
+  Text: =ThisItem.DocId & " | " & ThisItem.Name & " | " & ThisItem.Account
+  X: =65
+  Y: =0
+  Width: =Parent.TemplateWidth-65
+  Height: =42
+  Visible: =true
+### V97LinkDelete [ModernText@1.0.0] parent=V97Links
+  Text: ="הסר"
+  X: =0
+  Y: =4
+  Width: =60
+  Height: =32
+  Visible: =true
+  OnSelect: =If(varV97RemoteReady && !varV97Syncing,Set(varV97Syncing,true);Set(varV97EventEntity,"Links");Set(varV97EventKey,ThisItem.Key);Set(varV97EventDeleted,true);Set(varV97EventPayload,JSON({Key:ThisItem.Key},JSONFormat.Compact));Select(V97WriteEvent),Notify("המתן לסיום הסנכרון או רענן מהצוות",NotificationType.Warning))
+### V97AiExplain [ModernText@1.0.0] parent=None
+  Text: ="ניסוח שאלה להעתקה למערכת AI מורשית. אין כאן חיבור אוטומטי למודל."
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =80
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =58
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="ai"
+### V97AiQuestion [Classic/TextInput@2.3.2] parent=None
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =Parent.Height-192
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =74
+  Default: =Coalesce(varV97Question,"נתח את השינויים המהותיים וציין את מקורותיהם")
+  HintText: ="השאלה שלך"
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="ai"
+  DelayOutput: =true
+  HoverColor: =RGBA(219,227,238,1)
+  FocusedBorderThickness: =2
+  Mode: =TextMode.MultiLine
+### V97BuildPrompt [ModernText@1.0.0] parent=None
+  Text: ="הכן שאלה עם נתוני הדוח"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =Parent.Height-100
+  Width: =260
+  Height: =34
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="ai"
+  OnSelect: =Set(varV97ExportText,"חברה: " & varV97Company & "; תקופות: " & varV97Date & " מול " & varV97PriorDate & "; יחידה: " & varV97Unit & Char(10) & V97AiQuestion.Text & Char(10) & "אין להמציא עובדות. מקור נתונים לפני התאמות ותוצאת התאמות מובחנים בשדות Base ו-Current." & Char(10) & JSON({Rows:colV97Rows,Issues:colV97Issues,Entries:colV97Entries},JSONFormat.Compact));Reset(V97Export);Set(varV97Modal,"copy")
+### V97BackupInfo [ModernText@1.0.0] parent=None
+  Text: =If(varV97Modal="backup","העתק את הגיבוי לקובץ TXT. הגיבוי מכיל שינויים ומזוהה עם נתוני המקור המסוימים. ייבוא מחליף את השינויים הפעילים.","אפשר להעתיק ידנית מהתיבה אם הדפדפן חוסם העתקה אוטומטית.")
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =85
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =62
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal in ["backup","copy"]
+### V97Export [Classic/TextInput@2.3.2] parent=None
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =155
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =If(varV97Modal="backup",Max(80,(Parent.Height-380)/2),Parent.Height-270)
+  Default: =varV97ExportText
+  HintText: ="טקסט לייצוא"
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal in ["backup","copy"]
+  DelayOutput: =true
+  HoverColor: =RGBA(219,227,238,1)
+  FocusedBorderThickness: =2
+  Mode: =TextMode.MultiLine
+### V97CopyExport [ModernText@1.0.0] parent=None
+  Text: ="העתק"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =If(varV97Modal="backup",165+Max(80,(Parent.Height-380)/2),Parent.Height-96)
+  Width: =130
+  Height: =34
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal in ["backup","copy"]
+  OnSelect: =IfError(Copy(V97Export.Text),Notify("ההעתקה חסומה; סמן את הטקסט והעתק ידנית",NotificationType.Warning),Notify("הועתק ללוח. יש להדביק ולשמור בקובץ.",NotificationType.Success))
+### V97Import [Classic/TextInput@2.3.2] parent=None
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =215+Max(80,(Parent.Height-380)/2)
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =Max(60,(Parent.Height-380)/2)
+  Default: =""
+  HintText: ="הדבק כאן גיבוי מאותה גרסה ומאותם נתוני מקור"
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="backup"
+  DelayOutput: =true
+  HoverColor: =RGBA(219,227,238,1)
+  FocusedBorderThickness: =2
+  Mode: =TextMode.MultiLine
+### V97ImportButton [ModernText@1.0.0] parent=None
+  Text: ="שחזר מהטקסט והחלף שינויים"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =Parent.Height-85
+  Width: =270
+  Height: =34
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="backup"
+  OnSelect: =Set(varV97ImportText,V97Import.Text);Set(varV97Modal,"importconfirm")
+### V97Empty [ModernText@1.0.0] parent=None
+  Text: ="לא נמצאו שורות התואמות לסינון"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+24
+  Y: =205
+  Width: =Min(1160,Parent.Width-16)-48
+  Height: =45
+  Visible: =varV97Ready && ((varV97Modal in ["exec","exceptions","unchanged"] && IsEmpty(Switch(varV97Modal,"exceptions",ForAll(SortByColumns(AddColumns(Filter(colV97Candidates,(Abs(Delta)>=Max(0,IfError(Value(V97Min.Text),0)) && Abs(Percent)>=Max(0,IfError(Value(V97Pct.Text),0)) || IsNew || IsGone || IsRound || IsRepeated || IsReverse || !IsBlank(Classification)) && (IsReverse || Max(Abs(Current),Abs(Prior),Abs(Delta))>=Max(0,IfError(Value(V97Min.Text),0)) && Abs(Percent)>=Max(0,IfError(Value(V97Pct.Text),0))) && (IsBlank(V97ModalSearch.Text) || Lower(V97ModalSearch.Text) in Lower(Name&" "&Account&" "&Section)) && Switch(varV97ExceptionType,"material",Abs(Delta)>=Max(0,IfError(Value(V97Min.Text),0)) && Abs(Percent)>=Max(0,IfError(Value(V97Pct.Text),0)),"new",IsNew,"gone",IsGone,"round",IsRound,"repeat",IsRepeated,"reverse",IsReverse,"class",!IsBlank(Classification),true)) As e,Tags,If(Abs(Delta)>=Max(0,IfError(Value(V97Min.Text),0)) && Abs(Percent)>=Max(0,IfError(Value(V97Pct.Text),0)),"שינוי מהותי · ","")&If(e.IsNew,"חדש · ","")&If(e.IsGone,"אופס · ","")&If(e.IsRound,"עגול · ","")&If(e.IsRepeated,"חוזר · ","")&If(e.IsReverse,"יתרה הפוכה · ","")&e.Classification,RankValue,Max(Abs(e.Delta),Abs(e.Percent))),"RankValue",SortOrder.Descending) As e,{RowId:e.Section,NoteKey:If(e.Source="manual_entry",e.Section,e.Key),Name:e.Name,Account:e.Account,Section:e.ParentName,Current:e.Current,Prior:e.Prior,Delta:e.Delta,Tags:e.Tags,Detail:e.Detail}),"unchanged",ForAll(SortByColumns(Filter(colV97Unch...[+1340]
+### V97DrillSourceDetail [ModernText@1.0.0] parent=None
+  Text: ="פרטי שורת המקור"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+(Min(1160,Parent.Width-16)-52)*0.62
+  Y: =486
+  Width: =(Min(1160,Parent.Width-16)-52)*0.38
+  Height: =34
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="drill"
+  OnSelect: =Set(varV97ExportText,Coalesce(varV97DetailText,"בחר שורה בפירוט כדי לצפות בפרטים"));Reset(V97Export);Set(varV97Modal,"copy")
+### V97EvidenceAdjustment [ModernText@1.0.0] parent=None
+  Text: ="התאמות לסעיף מאז מקור הראיה: " & If(IsBlank(Sum(Filter(colV97Rows,RowId=varV97Section),Current-Base)),"—",Text(Sum(Filter(colV97Rows,RowId=varV97Section),Current-Base),"#,##0.###","he-IL"))
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+(Min(1160,Parent.Width-16)-52)*0.58
+  Y: =416
+  Width: =(Min(1160,Parent.Width-16)-52)*0.42
+  Height: =24
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="evidence"
+### V97ImportConfirmText [ModernText@1.0.0] parent=None
+  Text: ="השחזור יחליף את המצב המשותף לכל הצוות בהערות, פקודות וסטטוסים שבגיבוי. האירועים הקודמים נשמרים בהיסטוריית המקור. להמשיך?"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =110
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =80
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="importconfirm"
+### V97ImportConfirmYes [ModernText@1.0.0] parent=None
+  Text: ="שחזר והחלף"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =210
+  Width: =180
+  Height: =34
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="importconfirm"
+  OnSelect: =If(varV97RemoteReady && !varV97Syncing,Set(varV97Syncing,true);Set(varV97ImportMode,"restore");Select(V97ImportState),Notify("המתן לסיום הסנכרון או רענן מהצוות",NotificationType.Warning))
+### V97ImportConfirmNo [ModernText@1.0.0] parent=None
+  Text: ="ביטול"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+216
+  Y: =210
+  Width: =140
+  Height: =34
+  Visible: =varV97Ready && !IsBlank(varV97Modal) && varV97Modal="importconfirm"
+  OnSelect: =Set(varV97Modal,"backup")
+### V97SourceMetadata [ModernText@1.0.0] parent=None
+  Text: ="פרטי הקליטה והמקורות"
+  X: =If(V97Background.Width>=900,166,12)
+  Y: =If(V97Background.Width>=900,12,62)+100+If(V97Background.Width>=900,90,170)+If(V97Background.Width>=900,82,120)+64+238
+  Width: =240
+  Height: =34
+  Visible: =varV97Ready && varV97Page="settings"
+  OnSelect: =Set(varV97ExportText,"{" & Char(10) & "  ""meta"": {" & Char(10) & "    ""companyName"": ""גמידה פור לייף (ישראל) בע\""מ""," & Char(10) & "    ""subtitle"": ""דוחות כספיים ליום 31 בדצמבר 2025 מול 31 בדצמבר 2024""," & Char(10) & "    ""currency"": ""ILS""," & Char(10) & "    ""displayUnit"": ""אלפי ש\""ח""" & Char(10) & "  }," & Char(10) & "  ""dates"": {" & Char(10) & "    ""current"": ""31.12.2025""," & Char(10) & "    ""compare"": ""31.12.2024""" & Char(10) & "  }," & Char(10) & "  ""sourceFiles"": [" & Char(10) & "    ""פריסה 12.25GFLIL.xls""," & Char(10) & "    ""הרכבה 2024.xlsx""" & Char(10) & "  ]," & Char(10) & "  ""diagnostics"": {" & Char(10) & "    ""sourceFiles"": [" & Char(10) & "      ""פריסה 12.25GFLIL.xls""," & Char(10) & "      ""הרכבה 2024.xlsx""" & Char(10) & "    ]," & Char(10) & "    ""current"": ""31.12.2025""," & Char(10) & "    ""compare"": ""31.12.2024""," & Char(10) & "    ""pageRows"": {" & Char(10) & "      ""balance"": 57," & Char(10) & "      ""pnl"": 32," & Char(10) & "      ""cashflow"": 16," & Char(10) & "      ""ratios"": 15" & Char(10) & "    }," & Char(10) & "    ""pageRoots"": {" & Char(10) & "      ""balance"": 13," & Char(10) & "      ""pnl"": 14," & Char(10) & "      ""cashflow"": 6," & Char(10) & "      ""ratios"": 15" & Char(10) & "    }," & Char(10) & "    ""drillSections"": 44," & Char(10) & "    ""drillNonEmpty"": 44," & Char(10) & "    ""sourceAccountCandidates"": 210," & Char(10) & "    ""trialBalanceRows"": 210," & Char(10) & " ...[+3338]
+### V97WriteEvent [ModernText@1.0.0] parent=None
+  Text: =""
+  X: =0
+  Y: =0
+  Width: =1
+  Height: =1
+  Visible: =false
+  OnSelect: =If(varV97RemoteReady && varV97Syncing,
+  Set(varV97EventEnvelope,JSON({Entity:varV97EventEntity,Key:varV97EventKey,Deleted:varV97EventDeleted,Payload:varV97EventPayload,At:Text(Now(),DateTimeFormat.UTC),Author:User().FullName},JSONFormat.Compact));
+  If(Len(varV97EventEnvelope)>55000,
+    Set(varV97Syncing,false);Notify("השינוי ארוך מדי לשמירה ברשומה אחת",NotificationType.Error),
+    IfError(
+      Patch(DashboardPOC_Data,Defaults(DashboardPOC_Data),{Title:"V97-EVENT8-"&Text(GUID()),field_1:varV97CompanyID,field_2:varV97PeriodID,field_3:"V97Event8",field_14:varV97Dataset,AuditNote:varV97EventEnvelope});true,
+      Set(varV97Syncing,false);Set(varV97SaveMessage,"השינוי לא נשמר: "&FirstError.Message);Notify(varV97SaveMessage,NotificationType.Error);false,
+      Set(varV97SaveMessage,"השינוי נשמר; מרענן את המצב המשותף…");If(varV97EventEntity="Entries" && !varV97EventDeleted,Reset(V97Amount);Reset(V97Description);Reset(V97Reference));Select(V97LoadShared);true
+    )
+  ),
+  Set(varV97Syncing,false);Notify("יש לרענן את המצב המשותף לפני שמירה",NotificationType.Warning)
+)
+### V97RebuildViews [ModernText@1.0.0] parent=None
+  Text: =""
+  X: =0
+  Y: =0
+  Width: =1
+  Height: =1
+  Visible: =false
+  OnSelect: =ClearCollect(colV97AllDrill,colV97Drill);
+Collect(colV97AllDrill,ForAll(colV97Entries As e,With({r:LookUp(colV97Base,RowId=e.Debit)},{Key:"MANUAL|"&e.Id&"|D",Section:e.Debit,Page:r.Page,Name:e.Description,Account:"MANUAL-"&e.Id,Code:r.Code,Current:e.Amount*r.DebitSign,Prior:0,Source:"manual_entry",Side:"debit",OtherCurrency:"",OtherCurrent:Blank(),OtherPrior:Blank(),Rate:Blank(),HasFx:false,Detail:JSON(e,JSONFormat.Compact)})));
+Collect(colV97AllDrill,ForAll(colV97Entries As e,With({r:LookUp(colV97Base,RowId=e.Credit)},{Key:"MANUAL|"&e.Id&"|C",Section:e.Credit,Page:r.Page,Name:e.Description,Account:"MANUAL-"&e.Id,Code:r.Code,Current:-e.Amount*r.DebitSign,Prior:0,Source:"manual_entry",Side:"credit",OtherCurrency:"",OtherCurrent:Blank(),OtherPrior:Blank(),Rate:Blank(),HasFx:false,Detail:JSON(e,JSONFormat.Compact)})));
+ClearCollect(colV97Candidates,AddColumns(colV97AllDrill As d,Delta,If(IsBlank(d.Current) || IsBlank(d.Prior),Blank(),d.Current-d.Prior),Percent,If(IsBlank(d.Current) || IsBlank(d.Prior),Blank(),If(d.Prior=0,If(d.Current=0,0,100),100*(d.Current-d.Prior)/Abs(d.Prior))),ParentName,LookUp(colV97Rows,RowId=d.Section,Name),IsNew,!IsBlank(d.Current) && !IsBlank(d.Prior) && d.Prior=0 && d.Current<>0,IsGone,!IsBlank(d.Current) && !IsBlank(d.Prior) && d.Current=0 && d.Prior<>0,IsRound,!IsBlank(d.Current) && Abs(d.Current)>=100 && Abs(d.Current/100-Round(d.Current/100,0))<0.000000001,IsRepeated,d.Current<>0 && CountIf(colV97AllDrill,Abs(Current)=Abs(d.Current))>=3,IsReverse...[+11578]
+### V97EntryFilter [ModernText@1.0.0] parent=None
+  Text: =If(varV97EntryFilter="manual","פקודות ידניות בלבד • הצג הכול","הכול • הצג רק פקודות ידניות")
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+Min(1160,Parent.Width-16)-290
+  Y: =410
+  Width: =260
+  Height: =32
+  Visible: =varV97Ready && varV97Modal="additional"
+  OnSelect: =Set(varV97EntryFilter,If(varV97EntryFilter="all","manual","all"))
+### V97Questions [Gallery@2.15.0] parent=None
+  Items: =colV97Questions
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =145
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =Max(120,Parent.Height-360)
+  TemplateSize: =80
+  TemplatePadding: =4
+  WrapCount: =1
+  Visible: =varV97Ready && varV97Modal="ai"
+  ShowScrollbar: =true
+  DelayItemLoading: =false
+  TabIndex: =0
+### V97QuestionText [ModernText@1.0.0] parent=V97Questions
+  Text: =ThisItem.Group&Char(10)&ThisItem.Question
+  X: =0
+  Y: =0
+  Width: =Parent.TemplateWidth
+  Height: =74
+  Visible: =true
+  OnSelect: =Set(varV97Question,ThisItem.Question);Reset(V97AiQuestion)
+### V97EvidenceReadable [ModernText@1.0.0] parent=None
+  Text: ="פרטי ראיה מסודרים"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =Parent.Height-70
+  Width: =185
+  Height: =32
+  Visible: =varV97Ready && varV97Modal="evidence"
+  OnSelect: =If(!IsBlank(varV97Doc),ClearCollect(colV97EvidenceDetails,With({d:ParseJSON(LookUp(colV97Documents,DocId=varV97Doc,Detail))},Table({Heading:"מסמך וסיווג",Body:Text(d.fileName)&Char(10)&Text(d.documentType)&Char(10)&Text(d.documentDate)&Char(10)&Text(d.classificationStatus)&Char(10)&Text(d.classificationNote)},{Heading:"פריטים שלא נמצאה להם התאמה",Body:If(IsBlank(d.unmatchedExtractedItems),"אין",CountRows(Table(d.unmatchedExtractedItems))&" פריטים ללא התאמה")},{Heading:"בדיקות קבוצתיות",Body:If(IsBlank(d.groupChecks),"לא סופקו בדיקות קבוצתיות",CountRows(Table(d.groupChecks))&" בדיקות קבוצתיות במסמך")},{Heading:"נתונים שחולצו מהמסמך",Body:"הנתונים שחולצו נשמרו במסמך המקור. במסך זה מוצגים הנימוק, הסטטוס והבדיקה המספרית של ההתאמה שנבחרה."},{Heading:"פירוט ההתאמה הנבחרת",Body:If(IsBlank(varV97EvidenceKey),"בחר התאמה במרכז הראיות",If(StartsWith(varV97EvidenceKey,"LINK|"),"שיוך ידני — לא בדיקה מספרית"&Char(10)&"מסמך: "&varV97Doc&Char(10)&"סעיף: "&LookUp(colV97Rows,RowId=varV97Section,Name),With({m:ParseJSON(varV97EvidenceDetail)},Text(m.matchReason)&Char(10)&"ביטחון: "&Text(m.confidence)&Char(10)&"סטטוס: "&Text(m.numericCheck.status)&Char(10)&"מטבע: "&Text(m.numericCheck.comparisonCurrency)&" | יחידה: "&Text(m.numericCheck.comparisonUnit)&Char(10)&Text(m.numericCheck.note)&Char(10)&Concat(Table(m.evidenceForMatch),"• "&Text(Value),Char(10))))) })));Set(varV97BackModal,"evidence");Set(varV97Modal,"evidencedetail"))
+### V97EvidenceDetails [Gallery@2.15.0] parent=None
+  Items: =colV97EvidenceDetails
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =105
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =Parent.Height-160
+  TemplateSize: =245
+  TemplatePadding: =4
+  WrapCount: =1
+  Visible: =varV97Ready && varV97Modal="evidencedetail"
+  ShowScrollbar: =true
+  DelayItemLoading: =false
+  TabIndex: =0
+### V97EvidenceDetailCard [ModernText@1.0.0] parent=V97EvidenceDetails
+  Text: =ThisItem.Heading&Char(10)&ThisItem.Body
+  X: =0
+  Y: =0
+  Width: =Parent.TemplateWidth
+  Height: =235
+  Visible: =true
+  OnSelect: =Set(varV97ExportText,ThisItem.Heading&Char(10)&ThisItem.Body);Reset(V97Export);Set(varV97BackModal,"evidencedetail");Set(varV97Modal,"copy")
+### V97Charts [Gallery@2.15.0] parent=None
+  Items: =colV97Charts
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =100
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =Parent.Height-155
+  TemplateSize: =295
+  TemplatePadding: =4
+  WrapCount: =If(Parent.Width>=1200,3,If(Parent.Width>=800,2,1))
+  Visible: =varV97Ready && varV97Modal="charts"
+  ShowScrollbar: =true
+  DelayItemLoading: =false
+  TabIndex: =0
+### V97ChartTitle [ModernText@1.0.0] parent=V97Charts
+  Text: =ThisItem.Name
+  X: =0
+  Y: =0
+  Width: =Parent.TemplateWidth
+  Height: =30
+  Visible: =true
+  OnSelect: =If(ThisItem.Kind<>"composition",Set(varV97DriverTarget,Switch(ThisItem.Kind,"gross","pnl_r236","operating","pnl_r270","net","pnl_r289","pnl_metric_sales"));Set(varV97BackModal,"charts");Set(varV97Modal,"drivers"))
+### V97ChartCaption [ModernText@1.0.0] parent=V97Charts
+  Text: =ThisItem.Caption
+  X: =0
+  Y: =165
+  Width: =Parent.TemplateWidth
+  Height: =125
+  Visible: =true
+  OnSelect: =If(ThisItem.Kind<>"composition",Set(varV97DriverTarget,Switch(ThisItem.Kind,"gross","pnl_r236","operating","pnl_r270","net","pnl_r289","pnl_metric_sales"));Set(varV97BackModal,"charts");Set(varV97Modal,"drivers"))
+### V97ChartImage [Image@2.2.3] parent=V97Charts
+  Image: =ThisItem.Svg
+  X: =0
+  Y: =32
+  Width: =Parent.TemplateWidth
+  Height: =130
+  ImagePosition: =ImagePosition.Fit
+  OnSelect: =If(ThisItem.Kind<>"composition",Set(varV97DriverTarget,Switch(ThisItem.Kind,"gross","pnl_r236","operating","pnl_r270","net","pnl_r289","pnl_metric_sales"));Set(varV97BackModal,"charts");Set(varV97Modal,"drivers"))
+### V97Drivers [Gallery@2.15.0] parent=None
+  Items: =FirstN(SortByColumns(AddColumns(AddColumns(Filter(colV97AllDrill As d,CountIf(colV97Effects,Target=varV97DriverTarget && Source=d.Section)>0 && Abs(d.Current-d.Prior)>=0.005),Impact,With({p:LookUp(colV97Rows,RowId=d.Section),c:Upper(Coalesce(LookUp(colV97Rows,RowId=d.Section,Code),"")),n:Coalesce(LookUp(colV97Rows,RowId=d.Section,Name),""),mult:If(LookUp(colV97Rows,RowId="pnl_metric_sales",Current)>=0,1,-1)},If(StartsWith(c,"T") || (IsMatch(n,"הכנס",MatchOptions.Contains) && !IsMatch(n,"הוצא",MatchOptions.Contains)),Abs(d.Current)-Abs(d.Prior),If(StartsWith(c,"U") || StartsWith(c,"V") || StartsWith(c,"W") || IsMatch(n,"עלות|הוצא|מסים על ההכנסה",MatchOptions.Contains),-(Abs(d.Current)-Abs(d.Prior)),mult*(d.Current-d.Prior))))),Magnitude,Abs(Impact)),"Magnitude",SortOrder.Descending),5)
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =110
+  Width: =Min(1160,Parent.Width-16)-40
+  Height: =Parent.Height-180
+  TemplateSize: =80
+  TemplatePadding: =4
+  WrapCount: =1
+  Visible: =varV97Ready && varV97Modal="drivers"
+  ShowScrollbar: =true
+  DelayItemLoading: =false
+  TabIndex: =0
+### V97DriverText [ModernText@1.0.0] parent=V97Drivers
+  Text: =ThisItem.Name&" | "&ThisItem.Account&Char(10)&If(ThisItem.Impact>=0,"שיפור ","פגיעה ")&Text(Abs(ThisItem.Impact),"#,##0.###","he-IL")
+  X: =0
+  Y: =0
+  Width: =Parent.TemplateWidth
+  Height: =72
+  Visible: =true
+  OnSelect: =Set(varV97Section,ThisItem.Section);Set(varV97NoteKey,If(ThisItem.Source="manual_entry",ThisItem.Section,ThisItem.Key));Set(varV97DetailText,ThisItem.Detail);Reset(V97Note);Set(varV97BackModal,"drivers");Set(varV97Modal,"drill");Reset(V97Min);Reset(V97Pct)
+### V97ExportView [ModernText@1.0.0] parent=None
+  Text: ="העתק לאקסל"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+144
+  Y: =32
+  Width: =135
+  Height: =32
+  Visible: =varV97Ready && varV97Modal in ["exec","unchanged","exceptions","drill","evidence","additional"]
+  OnSelect: =Set(varV97ExportText,Switch(varV97Modal,
+  "drill","סעיף"&Char(9)&"קוד סעיף"&Char(9)&"חשבון"&Char(9)&"תיאור"&Char(9)&varV97Date&Char(9)&varV97PriorDate&Char(9)&"הפרש"&Char(9)&"שינוי %"&Char(9)&"מטבע"&Char(9)&"מקור"&Char(10)&Concat(Filter(colV97AllDrill As d,(d.Section=varV97Section || CountIf(colV97Edges,RowId=d.Section && Ancestor=varV97Section)>0) && (IsBlank(V97ModalSearch.Text) || Lower(V97ModalSearch.Text) in Lower(d.Name&" "&d.Account)) && (IfError(Value(V97Min.Text),0)<=0 || !IsBlank(d.Current) && !IsBlank(d.Prior) && Abs(d.Current-d.Prior)>=IfError(Value(V97Min.Text),0)) && (IfError(Value(V97Pct.Text),0)<=0 || !IsBlank(d.Current) && !IsBlank(d.Prior) && If(d.Prior=0,d.Current<>0,Abs(100*(d.Current-d.Prior)/d.Prior)>=IfError(Value(V97Pct.Text),0)))),LookUp(colV97Rows,RowId=Section,Name)&Char(9)&Code&Char(9)&Account&Char(9)&Name&Char(9)&Text(Current,"0.###","en-US")&Char(9)&Text(Prior,"0.###","en-US")&Char(9)&Text(Current-Prior,"0.###","en-US")&Char(9)&If(Prior=0,If(Current=0,"0","חדש"),Text(100*(Current-Prior)/Abs(Prior),"0.###","en-US"))&Char(9)&varV97Unit&Char(9)&Source,Char(10)),
+  "evidence","סעיף"&Char(9)&"תיאור"&Char(9)&"חשבון"&Char(9)&varV97Date&Char(9)&varV97PriorDate&Char(9)&"הפרש"&Char(9)&"שינוי %"&Char(9)&"סטטוס"&Char(9)&"מסמך"&Char(9)&"שם מסמך"&Char(10)&Concat(Filter(AddColumns(colV97EvidenceView As m,EffectiveStatus,Coalesce(LookUp(colV97Reviews,Key=m.Key,Status),m.AutoStatus)) As e,(IsBlank(V97ModalSearch.Text) || Lower(V97ModalSearch.Text) in Lower(e.Na...[+3584]
+### V97Back [ModernText@1.0.0] parent=None
+  Text: ="חזרה"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+60
+  Y: =32
+  Width: =70
+  Height: =32
+  Visible: =varV97Ready && !IsBlank(varV97BackModal) && !IsBlank(varV97Modal)
+  OnSelect: =Set(varV97Modal,varV97BackModal);Set(varV97BackModal,"")
+### V97ExceptionType [ModernText@1.0.0] parent=None
+  Text: ="סוג: "&Switch(varV97ExceptionType,"all","הכול","material","שינוי מהותי","new","חדש","gone","אופס","round","עגול","repeat","חוזר","reverse","יתרה הפוכה","class","חשד לסיווג")
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20
+  Y: =Parent.Height-72
+  Width: =200
+  Height: =32
+  Visible: =varV97Ready && varV97Modal="exceptions"
+  OnSelect: =Set(varV97ExceptionType,Switch(varV97ExceptionType,"all","material","material","new","new","gone","gone","round","round","repeat","repeat","reverse","reverse","class","all"))
+### V97AuditChecks [ModernText@1.0.0] parent=None
+  Text: ="הצעות לבדיקת החריגה"
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+230
+  Y: =Parent.Height-72
+  Width: =210
+  Height: =32
+  Visible: =varV97Ready && varV97Modal="exceptions"
+  OnSelect: =Set(varV97ExportText,"הצעות לבדיקה — לא בדיקות שבוצעו"&Char(10)&"1. התאם יתרת פתיחה וסגירה למאזן הבוחן ולפקודות הנוספות."&Char(10)&"2. הסבר שינוי מהותי באמצעות תנועות, חתך ואסמכתאות."&Char(10)&"3. ביתרה חדשה או שאופסה, בדוק פתיחה, סגירה וסיווג מחדש."&Char(10)&"4. ביתרה הפוכה בדוק קיזוזים, מקדמות ומשיכות יתר."&Char(10)&"5. בסכום עגול או חוזר בדוק אומדן, רישום ידני וכפילות."&Char(10)&"6. בחשד לסיווג השווה את מהות החשבון להגדרת סעיף הדוח.");Reset(V97Export);Set(varV97BackModal,"exceptions");Set(varV97Modal,"copy")
+### V97LinkTargets [Gallery@2.15.0] parent=None
+  Items: =Filter(colV97AllDrill As d,!IsBlank(d.Account) && d.Key=First(Filter(colV97AllDrill As x,x.Section=d.Section && x.Account=d.Account)).Key)
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+20+(Min(1160,Parent.Width-16)-52)*0.62
+  Y: =266
+  Width: =(Min(1160,Parent.Width-16)-52)*0.38
+  Height: =Parent.Height-330
+  TemplateSize: =56
+  TemplatePadding: =4
+  WrapCount: =1
+  Visible: =varV97Ready && varV97Modal="links"
+  ShowScrollbar: =true
+  DelayItemLoading: =false
+  TabIndex: =0
+### V97LinkTargetRow [ModernText@1.0.0] parent=V97LinkTargets
+  Text: =LookUp(colV97Rows,RowId=ThisItem.Section,Name)&Char(10)&ThisItem.Account&" — "&ThisItem.Name
+  X: =0
+  Y: =0
+  Width: =Parent.TemplateWidth
+  Height: =52
+  Visible: =true
+  OnSelect: =Set(varV97Section,ThisItem.Section);Set(varV97LinkAccount,ThisItem.Account);Reset(V97LinkAccount)
+### V97EvidenceSortButton [ModernText@1.0.0] parent=None
+  Text: ="מיון: "&Switch(varV97EvidenceSort,"amount","סכום מסמך","difference","פער","סדר מקור")
+  X: =Max(8,(Parent.Width-Min(1160,Parent.Width-16))/2)+Min(1160,Parent.Width-16)-220
+  Y: =124
+  Width: =195
+  Height: =32
+  Visible: =varV97Ready && varV97Modal="evidence"
+  OnSelect: =Set(varV97EvidenceSort,Switch(varV97EvidenceSort,"original","amount","amount","difference","original"))

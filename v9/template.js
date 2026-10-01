@@ -1,0 +1,1184 @@
+{
+ "meta": {
+  "companyName": "",
+  "subtitle": "",
+  "currency": "",
+   "displayUnit": ""
+ },
+ "pages": {
+  "balance": {
+   "title": "מאזן",
+   "hint": "",
+   "roots": [],
+   "rows": [],
+   "expanded": []
+  },
+  "pnl": {
+   "title": "דוח רווח והפסד",
+   "hint": "",
+   "roots": [],
+   "rows": [],
+   "expanded": []
+  },
+  "cashflow": {
+   "title": "תזרים מזומנים",
+   "hint": "",
+   "roots": [],
+   "rows": [],
+   "expanded": []
+  },
+  "ratios": {
+   "title": "יחסים פיננסים",
+   "hint": "",
+   "roots": [],
+   "rows": [],
+   "expanded": []
+  }
+ },
+ "drilldownData": {},
+ "kpiDetails": {},
+ "dates": {
+  "current": "",
+  "compare": ""
+ },
+ "sourceFiles": [],
+ "diagnostics": {"issues":[]},
+ "aiInsights": [],
+ "materialityThreshold": 50
+}
+
+const DATA = JSON.parse(document.getElementById('dashboard-data').textContent);
+const BASE_DATA_FOR_MANUAL=JSON.parse(JSON.stringify(DATA));
+function dashboardFinancialFingerprint(data){ const d=data||{}; const payload={meta:d.meta||{},dates:d.dates||{},pages:d.pages||{},drilldownData:d.drilldownData||{},kpiDetails:d.kpiDetails||{},sourceFiles:d.sourceFiles||[],materialityThreshold:d.materialityThreshold}; return stableEvidenceKeyText(JSON.stringify(payload)); }
+function dashboardEvidenceFingerprint(data){ const d=data||{}; const payload={auditEvidence:d.auditEvidence||null,auditEvidenceData:d.auditEvidenceData||null,evidenceClassification:d.evidenceClassification||null}; return stableEvidenceKeyText(JSON.stringify(payload)); }
+const DASHBOARD_FINANCIAL_FINGERPRINT=dashboardFinancialFingerprint(DATA);
+const DASHBOARD_EVIDENCE_FINGERPRINT=dashboardEvidenceFingerprint(DATA);
+let activePage = 'balance';
+let activeSectionId = null;
+let modalMode = 'drilldown';
+let currentDrillViewRows = [];
+let materialityThreshold = (DATA.materialityThreshold != null) ? Number(DATA.materialityThreshold) : 50;
+const NOTES_STORAGE_KEY='finance_dashboard_notes_'+String((DATA.meta&&DATA.meta.companyName)||'company')+'_'+String((DATA.dates&&DATA.dates.current)||'current')+'_'+String((DATA.dates&&DATA.dates.compare)||'compare');
+const EMBEDDED_AUDIT_NOTES=(DATA.auditNotes&&typeof DATA.auditNotes==='object')?JSON.parse(JSON.stringify(DATA.auditNotes)):{};
+const EMBEDDED_NOTES_FINGERPRINT=stableEvidenceKeyText(JSON.stringify(EMBEDDED_AUDIT_NOTES));
+const auditNotes=JSON.parse(JSON.stringify(EMBEDDED_AUDIT_NOTES));
+const MANUAL_ENTRIES_STORAGE_KEY='finance_dashboard_manual_entries_'+String((DATA.meta&&DATA.meta.companyName)||'company')+'_'+String((DATA.dates&&DATA.dates.current)||'current')+'_'+String((DATA.dates&&DATA.dates.compare)||'compare');
+const EMBEDDED_MANUAL_ENTRIES=Array.isArray(DATA.manualAdditionalEntries)?JSON.parse(JSON.stringify(DATA.manualAdditionalEntries)):[];
+const EMBEDDED_MANUAL_FINGERPRINT=stableEvidenceKeyText(JSON.stringify(EMBEDDED_MANUAL_ENTRIES));
+let manualEntries=JSON.parse(JSON.stringify(EMBEDDED_MANUAL_ENTRIES));
+/* AUDIT EVIDENCE FEATURE START */
+const EVIDENCE_REVIEW_STORAGE_KEY='finance_dashboard_evidence_review_'+String((DATA.meta&&DATA.meta.companyName)||'company')+'_'+String((DATA.dates&&DATA.dates.current)||'current')+'_'+String((DATA.dates&&DATA.dates.compare)||'compare');
+const EMBEDDED_EVIDENCE_REVIEW=(DATA.auditEvidenceReview&&typeof DATA.auditEvidenceReview==='object')?JSON.parse(JSON.stringify(DATA.auditEvidenceReview)):{};
+const EMBEDDED_EVIDENCE_FINGERPRINT=stableEvidenceKeyText(JSON.stringify(EMBEDDED_EVIDENCE_REVIEW));
+const evidenceReviewState=Object.assign({manualStatus:{},history:[],manualAssignments:{},externalDocuments:[]},JSON.parse(JSON.stringify(EMBEDDED_EVIDENCE_REVIEW)));
+if(!evidenceReviewState.manualStatus||typeof evidenceReviewState.manualStatus!=='object') evidenceReviewState.manualStatus={};
+if(!Array.isArray(evidenceReviewState.history)) evidenceReviewState.history=[];
+if(!evidenceReviewState.manualAssignments||typeof evidenceReviewState.manualAssignments!=='object') evidenceReviewState.manualAssignments={};
+if(!Array.isArray(evidenceReviewState.externalDocuments)) evidenceReviewState.externalDocuments=[];
+let openEvidenceDetailKey=null;
+let manualEvidencePickerKey=null;
+let evidenceCenterAttentionOnly=false;
+let evidenceCenterSort='original';
+let currentEvidenceCenterEntries=[];
+function normalizeAccount(v){ return String(v==null?'':v).trim().replace(/\s+/g,' '); }
+function evidenceRaw(){ return DATA.auditEvidence||DATA.auditEvidenceData||DATA.evidenceClassification||null; }
+function evidenceDocuments(){ const raw=evidenceRaw(); let docs=[]; if(Array.isArray(raw)) docs=raw; else if(raw&&Array.isArray(raw.documents)) docs=raw.documents; else if(raw&&raw.classification&&Array.isArray(raw.classification.documents)) docs=raw.classification.documents; return docs.concat(Array.isArray(evidenceReviewState.externalDocuments)?evidenceReviewState.externalDocuments:[]); }
+function sectionIdForEvidenceTarget(target){ const code=String((target&&target.code)||'').trim().toUpperCase(); const sub=String((target&&target.subSection)||'').trim(); const main=String((target&&target.mainSection)||'').trim(); let fallback=null; for(const pageKey of ['balance','pnl','cashflow','ratios']){ const page=DATA.pages&&DATA.pages[pageKey]; if(!page) continue; for(const row of (page.rows||[])){ if(code&&String(row.code||'').trim().toUpperCase()===code) return row.id; if(!fallback&&sub&&String(row.name||'').trim()===sub) fallback=row.id; if(!fallback&&main&&String(row.name||'').trim()===main) fallback=row.id; } } return fallback; }
+function evidenceAutomaticKey(nc){ const s=String((nc&&nc.status)||'').trim(); if(/פער/.test(s)) return 'gap'; if(/לא ניתן/.test(s)) return 'unable'; if(/לא רלוונטי/.test(s)) return 'activity'; if(/תואם|תקין/.test(s)) return 'match'; return 'unable'; }
+function evidenceStatusInfo(key){ const map={match:{label:'תואם',icon:'●',cls:'match'},gap:{label:'פער',icon:'●',cls:'gap'},unable:{label:'לא ניתן לבדוק',icon:'●',cls:'unable'},activity:{label:'ראיה לפעילות',icon:'●',cls:'activity'},manualAssigned:{label:'שויך ידנית',icon:'+',cls:'activity'},handled:{label:'טופל',icon:'✓',cls:'handled'},needsAction:{label:'דורש טיפול',icon:'⬢',cls:'needs-action'}}; return map[key]||map.unable; }
+function evidencePriority(key){ return ({gap:5,unable:4,activity:3,match:2,manualAssigned:1}[key]||0); }
+function evidenceTargetKey(sectionId,account,level){ return (level==='Drill-down'?'drill:':'general:')+String(sectionId||'unknown')+':'+normalizeAccount(account||''); }
+function stableEvidenceKeyText(value){ let h=2166136261; const s=String(value||''); for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619); } return (h>>>0).toString(36); }
+function evidenceDocumentFingerprint(doc){ return [doc&&doc.fileName,doc&&doc.name,doc&&doc.documentUrl,doc&&doc.fileUrl,doc&&doc.filePath,doc&&doc.relativePath,doc&&doc.documentType,doc&&doc.documentDate].filter(Boolean).join('|'); }
+function evidenceDocumentKey(doc,index){ const explicit=String((doc&&doc.documentId)||'').trim(); const fingerprint=evidenceDocumentFingerprint(doc); const docs=evidenceDocuments(); if(explicit){ const sameIdCount=docs.filter(d=>String((d&&d.documentId)||'').trim()===explicit).length; if(sameIdCount===1) return explicit; const identity=explicit+'|'+fingerprint,base=explicit+'__'+encodeURIComponent(fingerprint||('index:'+index)); let occurrence=0; for(let i=0;i<=index&&i<docs.length;i++){ const d=docs[i],dIdentity=String((d&&d.documentId)||'').trim()+'|'+evidenceDocumentFingerprint(d); if(dIdentity===identity) occurrence++; } return occurrence>1?base+'_'+occurrence:base; } if(!fingerprint) return 'DOC_'+stableEvidenceKeyText('index:'+index); const base='DOC_'+stableEvidenceKeyText(fingerprint); let occurrence=0; for(let i=0;i<=index&&i<docs.length;i++){ const d=docs[i]; if(!String((d&&d.documentId)||'').trim()&&evidenceDocumentFingerprint(d)===fingerprint) occurrence++; } return occurrence>1?base+'_'+occurrence:base; }
+function evidenceDocumentLegacyKey(index){ return 'DOC_'+index; }
+function allEvidenceItems(){ const out=[]; const docs=evidenceDocuments(); docs.forEach((doc,docIndex)=>{ (Array.isArray(doc.matches)?doc.matches:[]).forEach((m,idx)=>{ const target=m.target||{},level=String(m.matchLevel||''); const sectionId=sectionIdForEvidenceTarget(target); const account=normalizeAccount(target.accountNumber); const numeric=m.numericCheck||{}; const fileName=String(doc.fileName||doc.name||'מסמך'); const path=doc.documentUrl||doc.fileUrl||doc.filePath||doc.relativePath||('evidence/'+fileName); const key=evidenceTargetKey(sectionId,account,level); out.push({id:evidenceDocumentKey(doc,docIndex)+':'+idx,documentId:doc.documentId||'',documentKey:evidenceDocumentKey(doc,docIndex),fileName,documentType:doc.documentType||'',documentDate:doc.documentDate||'',path,level,target,sectionId,account,accountName:target.accountName||'',mainSection:target.mainSection||'',subSection:target.subSection||'',code:target.code||'',matchReason:m.matchReason||'',confidence:m.confidence||'',evidenceForMatch:Array.isArray(m.evidenceForMatch)?m.evidenceForMatch:[],numeric,statusKey:evidenceAutomaticKey(numeric),targetKey:key,manualAssignment:false}); }); }); Object.entries(evidenceReviewState.manualAssignments||{}).forEach(([targetKey,keys])=>{ const m=String(targetKey).match(/^(drill|general):([^:]+):(.*)$/); if(!m) return; const level=m[1]==='drill'?'Drill-down':'General'; const sectionId=m[2],account=normalizeAccount(m[3]); (Array.isArray(keys)?keys:[]).forEach(docKey=>{ const docIndex=docs.findIndex((d,i)=>evidenceDocumentKey(d,i)===docKey||evidenceDocumentLegacyKey(i)===docKey); if(docIndex<0) return; const doc=docs[docIndex],stableKey=evidenceDocumentKey(doc,docIndex),legacyKey=evidenceDocumentLegacyKey(docIndex); if(out.some(x=>x.targetKey===targetKey&&(x.documentKey===stableKey||x.documentKey===legacyKey))) return; const fileName=String(doc.fileName||doc.name||'מסמך'); const path=doc.documentUrl||doc.fileUrl||doc.filePath||doc.relativePath||('evidence/'+fileName); out.push({id:stableKey+':manual:'+targetKey,documentId:doc.documentId||'',documentKey:stableKey,fileName,documentType:doc.documentType||'',documentDate:doc.documentDate||'',path,level,target:{accountNumber:account},sectionId,account,accountName:'',mainSection:'',subSection:'',code:'',matchReason:doc.manualExternal?'צורף ידנית':'שויך ידנית',confidence:'',evidenceForMatch:[],numeric:{},statusKey:'manualAssigned',targetKey,manualAssignment:true,manualExternal:!!doc.manualExternal}); }); }); return out; }
+function evidenceForDrillRow(sectionId,row){ const a=normalizeAccount(row&&(row.account||row.code)); return allEvidenceItems().filter(e=>e.level==='Drill-down'&&e.sectionId===sectionId&&normalizeAccount(e.account)===a); }
+function generalEvidenceForSection(sectionId){ return allEvidenceItems().filter(e=>e.level!=='Drill-down'&&e.sectionId===sectionId); }
+function automaticStatusForItems(items){ let best='match',p=0; (items||[]).forEach(e=>{ const ep=evidencePriority(e.statusKey); if(ep>p){p=ep;best=e.statusKey;} }); return items&&items.length?best:'none'; }
+function targetDisplayStatus(targetKey,items){ const manual=evidenceReviewState.manualStatus[targetKey]; return manual||automaticStatusForItems(items); }
+function evidenceStatusButtonHtml(targetKey,items){ if(!items||!items.length) return '<span class="audit-evidence-btn status-none">—</span>'; const status=targetDisplayStatus(targetKey,items),info=evidenceStatusInfo(status); return '<button type="button" class="audit-evidence-btn status-'+safe(info.cls)+'" data-evidence-target="'+safe(targetKey)+'"><span>'+safe(info.icon)+'</span><span>'+safe(info.label)+'</span><span>· '+items.length+' '+(items.length===1?'ראיה':'ראיות')+'</span></button>'; }
+function evidenceAmount(v,currency){ if(v===null||v===undefined||v==='') return '—'; const n=Number(v); return (Number.isFinite(n)?fmt(n):safe(v))+(currency?' '+safe(currency):''); }
+function evidenceItemHtml(e){ const n=e.numeric||{},info=evidenceStatusInfo(e.statusKey); const openBtn=e.fileName?'<span class="evidence-static-link-slot" data-evidence-key="'+safe(String(e.documentKey||e.documentId||''))+'" data-evidence-file="'+safe(String(e.fileName||''))+'"></span>':''; const summary='<div class="audit-evidence-summary"><span>ראיה: <b>'+evidenceAmount(n.documentAmount,n.documentCurrency)+'</b></span><span>דשבורד: <b>'+evidenceAmount(n.jsonAmount,n.documentCurrency)+'</b></span><span>פער: <b>'+evidenceAmount(n.difference,n.documentCurrency)+'</b></span></div>'; const reason=e.manualExternal?'צורף ידנית':(e.manualAssignment?'שויך ידנית':(e.matchReason||n.amountMeaning||'')); const note=n.note||''; return '<div class="audit-evidence-item"><div class="audit-evidence-item-head"><div><div class="audit-evidence-file">'+safe(e.fileName)+'</div><div class="audit-evidence-meta">'+safe([e.documentType,e.documentDate,e.confidence].filter(Boolean).join(' | '))+'</div></div><span class="audit-evidence-btn status-'+safe(info.cls)+'"><span>'+safe(info.icon)+'</span> '+safe(info.label)+'</span></div>'+summary+(reason?'<div class="audit-evidence-note">'+safe(reason)+'</div>':'')+(note?'<div class="audit-evidence-note">'+safe(note)+'</div>':'')+'<div class="audit-evidence-actions">'+openBtn+'</div></div>'; }
+function evidenceHistoryForTarget(targetKey){ return evidenceReviewState.history.filter(h=>h.targetKey===targetKey); }
+function evidenceReviewHtml(targetKey,items){ const manual=evidenceReviewState.manualStatus[targetKey]||''; const history=evidenceHistoryForTarget(targetKey); return '<div class="audit-evidence-review"><div class="evidence-manual-controls"><button type="button" data-evidence-manual="handled" data-evidence-target="'+safe(targetKey)+'">✓ סמן כטופל</button><button type="button" data-evidence-manual="needsAction" data-evidence-target="'+safe(targetKey)+'">⬢ דורש טיפול</button>'+(manual?'<button type="button" data-evidence-manual="auto" data-evidence-target="'+safe(targetKey)+'">↩ חזרה לסטטוס האוטומטי</button>':'')+'</div>'+(history.length?'<div class="audit-evidence-history"><span class="evidence-history-title">היסטוריית טיפול:</span><br>'+history.map(h=>safe((h.at||'')+' — '+h.label)).join('<br>')+'</div>':'')+'</div>'; }
+function evidenceDetailsHtml(targetKey,items){ return '<div class="audit-evidence-detail">'+(items||[]).map(evidenceItemHtml).join('')+evidenceReviewHtml(targetKey,items)+'</div>'; }
+function applyManualEvidenceStatus(targetKey,status){ const before=evidenceReviewState.manualStatus[targetKey]||''; if(status==='auto') delete evidenceReviewState.manualStatus[targetKey]; else evidenceReviewState.manualStatus[targetKey]=status; const label=status==='auto'?'בוטל הסימון הידני — חזרה לסטטוס האוטומטי':evidenceStatusInfo(status).label; evidenceReviewState.history.push({targetKey,from:before,to:status==='auto'?'':status,label,at:new Date().toLocaleString('he-IL')}); persistEvidenceReview(); refreshEvidenceViews(); }
+function loadLocalEvidenceReview(){ if(!NOTES_STORAGE_AVAILABLE) return; try{ const saved=localStorage.getItem(EVIDENCE_REVIEW_STORAGE_KEY); if(!saved) return; const parsed=JSON.parse(saved); if(!parsed||typeof parsed!=='object'||parsed.dashboardFingerprint!==DASHBOARD_FINANCIAL_FINGERPRINT||parsed.evidenceFingerprint!==DASHBOARD_EVIDENCE_FINGERPRINT||parsed.baseFingerprint!==EMBEDDED_EVIDENCE_FINGERPRINT||!parsed.review||typeof parsed.review!=='object') return; Object.keys(evidenceReviewState).forEach(k=>delete evidenceReviewState[k]); Object.assign(evidenceReviewState,JSON.parse(JSON.stringify(parsed.review))); if(!evidenceReviewState.manualStatus||typeof evidenceReviewState.manualStatus!=='object') evidenceReviewState.manualStatus={}; if(!Array.isArray(evidenceReviewState.history)) evidenceReviewState.history=[]; if(!evidenceReviewState.manualAssignments||typeof evidenceReviewState.manualAssignments!=='object') evidenceReviewState.manualAssignments={}; if(!Array.isArray(evidenceReviewState.externalDocuments)) evidenceReviewState.externalDocuments=[]; }catch(e){} }
+function persistEvidenceReview(){ if(!NOTES_STORAGE_AVAILABLE) return false; try{ localStorage.setItem(EVIDENCE_REVIEW_STORAGE_KEY,JSON.stringify({dashboardFingerprint:DASHBOARD_FINANCIAL_FINGERPRINT,evidenceFingerprint:DASHBOARD_EVIDENCE_FINGERPRINT,baseFingerprint:EMBEDDED_EVIDENCE_FINGERPRINT,review:evidenceReviewState})); return true; }catch(e){ return false; } }
+/* AUDIT EVIDENCE FEATURE END */
+
+function storageAvailable(){
+  try{
+    const k='__dashboard_storage_test__';
+    localStorage.setItem(k,'1');
+    localStorage.removeItem(k);
+    return true;
+  }catch(e){
+    return false;
+  }
+}
+
+const NOTES_STORAGE_AVAILABLE = storageAvailable();
+
+function loadLocalAuditNotes(){
+  if(!NOTES_STORAGE_AVAILABLE) return;
+  try{
+    const saved=localStorage.getItem(NOTES_STORAGE_KEY);
+    if(!saved) return;
+    const parsed=JSON.parse(saved);
+    if(!parsed||typeof parsed!=='object'||parsed.dashboardFingerprint!==DASHBOARD_FINANCIAL_FINGERPRINT||parsed.baseFingerprint!==EMBEDDED_NOTES_FINGERPRINT||!parsed.notes||typeof parsed.notes!=='object') return;
+    Object.keys(auditNotes).forEach(k=>delete auditNotes[k]);
+    Object.assign(auditNotes,JSON.parse(JSON.stringify(parsed.notes)));
+  }catch(e){}
+}
+
+function persistAuditNotes(){
+  if(!NOTES_STORAGE_AVAILABLE) return false;
+  try{
+    localStorage.setItem(NOTES_STORAGE_KEY,JSON.stringify({dashboardFingerprint:DASHBOARD_FINANCIAL_FINGERPRINT,baseFingerprint:EMBEDDED_NOTES_FINGERPRINT,notes:auditNotes}));
+    return true;
+  }catch(e){
+    return false;
+  }
+}
+
+loadLocalAuditNotes();
+loadLocalEvidenceReview();
+const MANUAL_ENTRIES_SESSION_PREFIX='finance_dashboard_manual_entries_session_v1:';
+function loadSessionManualEntries(){ try{ const raw=String(window.name||''); if(!raw.startsWith(MANUAL_ENTRIES_SESSION_PREFIX)) return; const parsed=JSON.parse(raw.slice(MANUAL_ENTRIES_SESSION_PREFIX.length)); if(parsed&&typeof parsed==='object'&&!Array.isArray(parsed)&&Array.isArray(parsed.entries)&&parsed.dashboardFingerprint===DASHBOARD_FINANCIAL_FINGERPRINT&&parsed.baseFingerprint===EMBEDDED_MANUAL_FINGERPRINT) manualEntries=parsed.entries; }catch(e){} }
+function persistSessionManualEntries(){ try{ window.name=MANUAL_ENTRIES_SESSION_PREFIX+JSON.stringify({dashboardFingerprint:DASHBOARD_FINANCIAL_FINGERPRINT,baseFingerprint:EMBEDDED_MANUAL_FINGERPRINT,entries:manualEntries}); return true; }catch(e){ return false; } }
+function loadLocalManualEntries(){ if(!NOTES_STORAGE_AVAILABLE){ loadSessionManualEntries(); return; } try{ const saved=localStorage.getItem(MANUAL_ENTRIES_STORAGE_KEY); if(!saved) return; const parsed=JSON.parse(saved); if(parsed&&typeof parsed==='object'&&!Array.isArray(parsed)&&Array.isArray(parsed.entries)&&parsed.dashboardFingerprint===DASHBOARD_FINANCIAL_FINGERPRINT&&parsed.baseFingerprint===EMBEDDED_MANUAL_FINGERPRINT) manualEntries=parsed.entries; }catch(e){} }
+function persistManualEntries(){ if(!NOTES_STORAGE_AVAILABLE) return persistSessionManualEntries(); try{ localStorage.setItem(MANUAL_ENTRIES_STORAGE_KEY,JSON.stringify({dashboardFingerprint:DASHBOARD_FINANCIAL_FINGERPRINT,baseFingerprint:EMBEDDED_MANUAL_FINGERPRINT,entries:manualEntries})); return true; }catch(e){ return false; } }
+loadLocalManualEntries();
+function adjustmentTargetOptions(){ const out=[]; ['balance','pnl'].forEach(pageKey=>{ const page=DATA.pages&&DATA.pages[pageKey]; if(!page) return; (page.rows||[]).forEach(row=>{ if(!row||!row.id||row.type==='section'||(row.children&&row.children.length)||row.type==='metric') return; out.push({pageKey,row}); }); }); return out; }
+function balanceNatureFromText(value){ const text=String(value||'').toLowerCase(); if(/equity|הון|עודפים|יתרת רווח|מניות/.test(text)) return 'equity'; if(/liabil|התחייב|ספק|זכא|הלווא|אשראי|אג.?ח|מקדמ(?:ות|ה).*מלקוחות/.test(text)) return 'liability'; if(/asset|נכס|מזומ|לקוח|מלאי|רכוש|חייב|פיקדון|פקדון/.test(text)) return 'asset'; return ''; }
+function balanceNatureForSection(sectionId){ const page=DATA.pages&&DATA.pages.balance; if(!page) return ''; const map=byId(page),row=map[sectionId]; if(!row) return ''; const parents=[],seen=new Set([row.id]); let frontier=[row.id]; while(frontier.length){ const next=[]; (page.rows||[]).forEach(p=>{ if(!p||seen.has(p.id)||!Array.isArray(p.children)) return; if(p.children.some(id=>frontier.includes(id))){ parents.push(p); seen.add(p.id); next.push(p.id); } }); frontier=next; } for(const parent of parents){ const nature=balanceNatureFromText([parent.id,parent.code,parent.name].join(' ')); if(nature) return nature; } return balanceNatureFromText([row.id,row.code,row.name].join(' ')); }
+function balanceConventionSign(nature){ const page=DATA.pages&&DATA.pages.balance; if(!page) return 1; const scoreFor=kind=>{ let score=0; (page.rows||[]).forEach(row=>{ if(!row||row.type==='section'||row.type==='metric'||(row.children&&row.children.length)||balanceNatureForSection(row.id)!==kind) return; const current=Number(row.current),compare=Number(row.compare); const v=Number.isFinite(current)&&current!==0?current:(Number.isFinite(compare)?compare:0); if(v) score+=Math.sign(v)*Math.max(1,Math.abs(v)); }); return score; }; let score=nature==='equity'?scoreFor('liability'):scoreFor(nature); if(nature==='equity'&&Math.abs(score)<0.000001) score=scoreFor('equity'); return score<0?-1:1; }
+function rawPnlRevenueSign(dataRoot,period){ const page=(((dataRoot||{}).pages||{}).pnl)||{rows:[]},rows=page.rows||[]; const r=rows.find(x=>x.id==='pnl_metric_sales')||rows.find(x=>String(x.name||'').trim()==='סה"כ מכירות')||rows.find(x=>/^T(?:\d+)?$/i.test(String(x.code||''))); if(!r) return 0; const map={}; rows.forEach(x=>{ if(x&&x.id) map[x.id]=x; }); const sumPeriod=row=>{ if(!row) return 0; if(row.children&&row.children.length) return row.children.reduce((a,id)=>a+sumPeriod(map[id]),0); return Number(row[period])||0; }; const n=sumPeriod(r); return Number.isFinite(n)&&n!==0?Math.sign(n):0; }
+function resolvedPnlRevenueSign(dataRoot,period){ const direct=rawPnlRevenueSign(dataRoot,period); if(direct) return direct; const fallback=rawPnlRevenueSign(dataRoot,period==='current'?'compare':'current'); return fallback||-1; }
+function basePnlRevenueSign(period){ return resolvedPnlRevenueSign(BASE_DATA_FOR_MANUAL,period); }
+function manualPostingDelta(sectionId,side,amount){ const row=findRow(sectionId),a=Math.abs(Number(amount)||0); if(!row||!a) return null; if(String(sectionId).startsWith('pnl_')){ const kind=pnlEconomicKind(row); const revenueSign=basePnlRevenueSign('current')||basePnlRevenueSign('compare')||-1; if(kind==='income') return (side==='credit'?1:-1)*revenueSign*a; if(kind==='expense') return (side==='debit'?1:-1)*(-revenueSign)*a; return null; } const nature=balanceNatureForSection(sectionId),displayIncrease=balanceConventionSign(nature); if(nature==='asset') return (side==='debit'?1:-1)*displayIncrease*a; if(nature==='liability'||nature==='equity') return (side==='credit'?1:-1)*displayIncrease*a; return null; }
+function adjustmentDeltaForSection(sectionId){ let total=0; (manualEntries||[]).forEach(entry=>{ (entry.legs||[]).forEach(leg=>{ if(leg.sectionId!==sectionId) return; const normalized=manualPostingDelta(leg.sectionId,leg.side,Math.abs(Number(leg.delta)||0)); total+=normalized===null?(Number(leg.delta)||0):normalized; }); }); return total; }
+function effectivePageRowCurrent(pageKey,row){ if(!row) return 0; const page=DATA.pages&&DATA.pages[pageKey]; if(!page) return Number(row.current)||0; return (row.children&&row.children.length)?sumRow(row,byId(page)).current:(Number(row.current)||0); }
+function findBalanceMetric(ids,names){ const page=DATA.pages&&DATA.pages.balance;if(!page)return null;const rows=page.rows||[],map=byId(page);for(const id of (ids||[])){if(map[id])return map[id];}for(const name of (names||[])){const n=String(name||'').replace(/\s+/g,' ').trim();const row=rows.find(r=>String(r.name||'').replace(/\s+/g,' ').trim()===n);if(row)return row;}return null;}
+function balanceEconomicCurrent(row,nature){ if(!row) return 0; return effectivePageRowCurrent('balance',row)*balanceConventionSign(nature); }
+function ensureManualEquityBridge(netEconomicImpact){ if(!netEconomicImpact) return; const balance=DATA.pages&&DATA.pages.balance; if(!balance) return; const equity=(balance.rows||[]).find(r=>r.id==='balance_total_equity')||(balance.rows||[]).find(r=>/סה.?כ.*הון|סך.*הון|הון עצמי/.test(String(r.name||''))); if(!equity) return; const displayDelta=balanceConventionSign('equity')*netEconomicImpact; if(Array.isArray(equity.children)&&equity.children.length){ const bridgeId='balance_manual_profit_bridge'; let bridge=(balance.rows||[]).find(r=>r.id===bridgeId); if(!bridge){ bridge={id:bridgeId,code:'',name:'השפעת פקודות ידניות על תוצאת התקופה',current:0,compare:0,type:'item',unit:equity.unit||defaultDisplayUnit(),__manualAdjustment:true}; balance.rows.push(bridge); if(!equity.children.includes(bridgeId)) equity.children.push(bridgeId); } bridge.current=(Number(bridge.current)||0)+displayDelta; } else { equity.current=(Number(equity.current)||0)+displayDelta; equity.__manualAdjustmentAmount=(Number(equity.__manualAdjustmentAmount)||0)+displayDelta; } }
+function rowContainsAffected(pageKey,row,affected){ if(!row||!affected||!affected.size) return false; if(affected.has(row.id)) return true; const page=DATA.pages&&DATA.pages[pageKey]; if(!page||!Array.isArray(row.children)||!row.children.length) return false; const map=byId(page); const visit=id=>{ if(affected.has(id)) return true; const r=map[id]; return !!(r&&Array.isArray(r.children)&&r.children.some(visit)); }; return row.children.some(visit); }
+function rowPeriodValue(pageKey,row,period){ if(!row) return 0; const page=DATA.pages&&DATA.pages[pageKey]; if(!page) return Number(row&&row[period])||0; if(row.children&&row.children.length){ const v=sumRow(row,byId(page)); return Number(v[period])||0; } return Number(row[period])||0; }
+function findBestRowByRegex(pageKey,regex){ const page=DATA.pages&&DATA.pages[pageKey]; if(!page) return null; const rows=(page.rows||[]).filter(r=>r&&regex.test(String(r.name||''))); if(!rows.length) return null; return rows.sort((a,b)=>((b.children&&b.children.length)?2:0)-((a.children&&a.children.length)?2:0))[0]||null; }
+function economicBalancePeriod(row,nature,period){ return rowPeriodValue('balance',row,period)*balanceConventionSign(nature); }
+function rowPeriodPresent(pageKey,row,period,dataRoot){ if(!row) return false; const root=dataRoot||DATA,page=(root.pages||{})[pageKey]; if(!page) return row[period]!==null&&row[period]!==undefined&&row[period]!==''&&Number.isFinite(Number(row[period])); const map={}; (page.rows||[]).forEach(r=>map[r.id]=r); const visit=r=>{ if(!r) return false; if(r.children&&r.children.length) return r.children.some(id=>visit(map[id])); return r[period]!==null&&r[period]!==undefined&&r[period]!==''&&Number.isFinite(Number(r[period])); }; return visit(map[row.id]||row); }
+function averageEconomicBalance(row,nature){ if(!row) return 0; const hasC=rowPeriodPresent('balance',row,'current',DATA),hasP=rowPeriodPresent('balance',row,'compare',DATA); const c=Math.abs(economicBalancePeriod(row,nature,'current')),p=Math.abs(economicBalancePeriod(row,nature,'compare')); if(hasC&&hasP) return (c+p)/2; return hasC?c:(hasP?p:0); }
+function basePageRowById(pageKey,id){ const page=(BASE_DATA_FOR_MANUAL.pages||{})[pageKey]; return page&&((page.rows||[]).find(r=>r.id===id)); }
+function baseRowPeriodValue(pageKey,row,period){ if(!row) return 0; const base=basePageRowById(pageKey,row.id)||row,page=(BASE_DATA_FOR_MANUAL.pages||{})[pageKey]; if(page&&base.children&&base.children.length){ const map={}; (page.rows||[]).forEach(r=>map[r.id]=r); const sum=id=>{ const r=map[id]; if(!r) return 0; if(r.children&&r.children.length) return r.children.reduce((a,c)=>a+sum(c),0); return Number(r[period])||0; }; return sum(base.id); } return Number(base[period])||0; }
+function baseAverageEconomicBalance(row,nature){ if(!row) return 0; const base=basePageRowById('balance',row.id)||row; const hasC=rowPeriodPresent('balance',base,'current',BASE_DATA_FOR_MANUAL),hasP=rowPeriodPresent('balance',base,'compare',BASE_DATA_FOR_MANUAL); const sign=balanceConventionSign(nature); const c=Math.abs(baseRowPeriodValue('balance',base,'current')*sign),p=Math.abs(baseRowPeriodValue('balance',base,'compare')*sign); if(hasC&&hasP) return (c+p)/2; return hasC?c:(hasP?p:0); }
+function basePnlEconomicAmount(row,period){ if(!row) return 0; return Math.abs((basePnlRevenueSign(period)||-1)*baseRowPeriodValue('pnl',row,period)); }
+function parseDashboardDate(value){ const s=String(value||'').trim(); let m=s.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})$/); if(m) return new Date(Number(m[3]),Number(m[2])-1,Number(m[1])); m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/); if(m) return new Date(Number(m[1]),Number(m[2])-1,Number(m[3])); return null; }
+function ratioPeriodDays(ratioRow,baseAvg,baseDenominator){ const base=ratioRow&&((((BASE_DATA_FOR_MANUAL.pages||{}).ratios||{}).rows)||[]).find(r=>r.id===ratioRow.id); const baseRatio=Math.abs(Number(base&&base.current)); if(Number.isFinite(baseRatio)&&baseRatio>0&&baseAvg>0&&baseDenominator>0){ const inferred=baseRatio*baseDenominator/baseAvg; if(inferred>=1&&inferred<=400) return inferred; } const detail=base&&base.calculationDetails&&base.calculationDetails.current; const opening=parseDashboardDate(detail&&detail.openingBalanceDate),ending=parseDashboardDate((DATA.dates||{}).current); if(opening&&ending){ const days=Math.round((ending-opening)/86400000); if(days>=1&&days<=400) return days; } return null; }
+function setManualRatioCalculation(row,components,formula,substitution){ if(!row) return; if(!row.calculationDetails||typeof row.calculationDetails!=='object') row.calculationDetails={}; const base=((((BASE_DATA_FOR_MANUAL.pages||{}).ratios||{}).rows)||[]).find(r=>r.id===row.id); const baseCurrent=base&&base.calculationDetails&&base.calculationDetails.current; row.calculationDetails.current=Object.assign({},baseCurrent||{}, {components:(components||[]).map(c=>Object.assign({},c)),formula:formula||(baseCurrent&&baseCurrent.formula)||'',substitution:substitution||'',manualAdjustment:true}); }
+function syncManualRatioCalculationDetails(){ const ratios=((((DATA.pages||{}).ratios||{}).rows)||[]),baseRatios=((((BASE_DATA_FOR_MANUAL.pages||{}).ratios||{}).rows)||[]); ratios.forEach(row=>{ const base=baseRatios.find(r=>r.id===row.id); if(!base) return; const delta=(Number(row.current)||0)-(Number(base.current)||0); if(Math.abs(delta)<0.0000001||row.calculationDetails&&row.calculationDetails.current&&row.calculationDetails.current.manualAdjustment) return; if(!row.calculationDetails||typeof row.calculationDetails!=='object') row.calculationDetails={}; const baseCurrent=base.calculationDetails&&base.calculationDetails.current; const current=Object.assign({},baseCurrent||{}); current.components=Array.isArray(baseCurrent&&baseCurrent.components)?baseCurrent.components.map(c=>Object.assign({},c)):[]; current.components=current.components.filter(c=>!c.__manualAdjustment); current.components.push({label:'השפעת פקודות ידניות',value:delta,unit:row.unit||'',__manualAdjustment:true}); const oldSub=String((baseCurrent&&baseCurrent.substitution)||'').trim(); current.substitution=(oldSub?oldSub+' | ':'')+'תוצאה לאחר פקודות ידניות: '+String(row.current); current.manualAdjustment=true; row.calculationDetails.current=current; }); }
+function pnlEconomicAmount(row,period){ if(!row) return 0; const sign=basePnlRevenueSign(period)||-1; return Math.abs(sign*rowPeriodValue('pnl',row,period)); }
+function ratioRowByRegex(regex){ return ((((DATA.pages||{}).ratios||{}).rows)||[]).find(r=>r&&regex.test(String(r.name||'')))||null; }
+function baseRatioCurrent(row){ const base=row&&((((BASE_DATA_FOR_MANUAL.pages||{}).ratios||{}).rows)||[]).find(r=>r.id===row.id); return Number(base&&base.current)||0; }
+function ratioComponentPreferredRow(ratioRegex,pageKey,componentHintRegex,fallbackRegex){ const ratio=ratioRowByRegex(ratioRegex),base=ratio&&((((BASE_DATA_FOR_MANUAL.pages||{}).ratios||{}).rows)||[]).find(r=>r.id===ratio.id),detail=base&&base.calculationDetails&&base.calculationDetails.current,components=Array.isArray(detail&&detail.components)?detail.components:[],page=(BASE_DATA_FOR_MANUAL.pages||{})[pageKey]||DATA.pages&&DATA.pages[pageKey]; if(page){ const rows=page.rows||[]; for(const c of components){ const label=String(c&&c.label||''); if(componentHintRegex&&!componentHintRegex.test(label)) continue; const explicit=[c&&c.rowId,c&&c.sourceRowId,c&&c.id].filter(Boolean).map(String); for(const id of explicit){ const found=rows.find(r=>String(r.id)===id); if(found) return (DATA.pages&&DATA.pages[pageKey]&&byId(DATA.pages[pageKey])[found.id])||found; } const code=String(c&&c.code||c&&c.sourceCode||'').trim(); if(code){ const found=rows.find(r=>String(r.code||'').trim()===code); if(found) return (DATA.pages&&DATA.pages[pageKey]&&byId(DATA.pages[pageKey])[found.id])||found; } const norm=label.replace(/ממוצע|יתרת|סה.?כ|סך/gi,' ').replace(/\s+/g,' ').trim(); const candidates=rows.filter(r=>r&&r.name&&norm.includes(String(r.name).replace(/\s+/g,' ').trim())).sort((a,b)=>String(b.name).length-String(a.name).length); if(candidates[0]) return (DATA.pages&&DATA.pages[pageKey]&&byId(DATA.pages[pageKey])[candidates[0].id])||candidates[0]; } } return findBestRowByRegex(pageKey,fallbackRegex); }
+function recomputeExtendedManualRatios(affected){
+  const ratios=((((DATA.pages||{}).ratios||{}).rows)||[]),pnl=DATA.pages&&DATA.pages.pnl;
+  if(!ratios.length) return;
+  const customers=ratioComponentPreferredRow(/ימי.*לקוחות|לקוחות.*ימים|days.*receiv/i,'balance',/לקוח|receiv/i,/לקוחות|חייבים.*לקוחות|accounts receivable/i);
+  const inventory=ratioComponentPreferredRow(/ימי.*מלאי|מלאי.*ימים|days.*invent/i,'balance',/מלאי|invent/i,/מלאי|inventory/i);
+  const suppliers=ratioComponentPreferredRow(/ימי.*ספקים|ספקים.*ימים|days.*payab/i,'balance',/ספק|payab/i,/ספקים|זכאים.*ספקים|accounts payable/i);
+  const grossPpe=ratioComponentPreferredRow(/שיעור.*פחת|פחת.*%|depreciation.*rate/i,'balance',/רכוש.*קבוע|ppe|property/i,/רכוש קבוע.*ברוטו|עלות.*רכוש קבוע|gross.*property|gross.*ppe/i);
+  const loans=ratioComponentPreferredRow(/שיעור.*ריבית|ריבית.*%|interest.*rate/i,'balance',/הלווא|אשראי|borrow/i,/הלוואות|אשראי.*מתאגיד|borrowings|loans/i);
+  const revenue=pnl?(ratioComponentPreferredRow(/ימי.*לקוחות|לקוחות.*ימים|days.*receiv/i,'pnl',/הכנס|מכיר|revenue|sales/i,/סה.?כ.*(מכירות|הכנסות)|^הכנסות$|^מכירות$/i)||((pnl.rows||[]).find(r=>r.id==='pnl_metric_sales'))):null;
+  const cogs=pnl?ratioComponentPreferredRow(/ימי.*מלאי|מלאי.*ימים|days.*invent/i,'pnl',/עלות.*מכר|עלות.*מכיר|cost.*sales|cogs/i,/עלות המכר|עלות המכירות|cost of sales|cogs/i):null;
+  const purchases=pnl?ratioComponentPreferredRow(/ימי.*ספקים|ספקים.*ימים|days.*payab/i,'pnl',/קניות|purchases/i,/קניות|purchases/i):null;
+  const depr=pnl?ratioComponentPreferredRow(/שיעור.*פחת|פחת.*%|depreciation.*rate/i,'pnl',/פחת|הפחת|depreciat|amorti/i,/פחת|הפחתה|depreciat|amorti/i):null;
+  const interest=pnl?ratioComponentPreferredRow(/שיעור.*ריבית|ריבית.*%|interest.*rate/i,'pnl',/ריבית|interest/i,/ריבית|interest/i):null;
+  const tax=pnl?ratioComponentPreferredRow(/שיעור.*מס|מס.*אפקטיבי|effective.*tax|tax.*rate/i,'pnl',/מס|tax/i,/מסים.*הכנסה|מיסים.*הכנסה|מס על ההכנסה|income tax/i):null;
+  const pbt=pnl?(((pnl.rows||[]).find(r=>r.id==='pnl_metric_pbt'))||ratioComponentPreferredRow(/שיעור.*מס|מס.*אפקטיבי|effective.*tax|tax.*rate/i,'pnl',/לפני.*מס|before.*tax/i,/רווח.*לפני.*מס|הפסד.*לפני.*מס|profit.*before.*tax/i)):null;
+  const changed=r=>r&&rowContainsAffected(r.id&&String(r.id).startsWith('pnl_')?'pnl':'balance',r,affected);
+  const sales=pnlEconomicAmount(revenue,'current'),cost=pnlEconomicAmount(cogs,'current'),purchaseAmt=pnlEconomicAmount(purchases,'current')||cost;
+  const avgCust=averageEconomicBalance(customers,'asset'),avgInv=averageEconomicBalance(inventory,'asset'),avgSupp=averageEconomicBalance(suppliers,'liability'),avgPpe=averageEconomicBalance(grossPpe,'asset'),avgLoans=averageEconomicBalance(loans,'liability');
+  const baseSales=basePnlEconomicAmount(revenue,'current'),baseCost=basePnlEconomicAmount(cogs,'current'),basePurchases=basePnlEconomicAmount(purchases,'current')||baseCost;
+  const baseAvgCust=baseAverageEconomicBalance(customers,'asset'),baseAvgInv=baseAverageEconomicBalance(inventory,'asset'),baseAvgSupp=baseAverageEconomicBalance(suppliers,'liability');
+  const apply=(regex,val,condition,components,formula,substitution)=>{ const rr=ratioRowByRegex(regex); if(rr&&condition&&Number.isFinite(val)){ rr.current=val; setManualRatioCalculation(rr,components,formula,substitution); } return rr; };
+  const custRatio=ratioRowByRegex(/ימי.*לקוחות|לקוחות.*ימים|days.*receiv/i),invRatio=ratioRowByRegex(/ימי.*מלאי|מלאי.*ימים|days.*invent/i),suppRatio=ratioRowByRegex(/ימי.*ספקים|ספקים.*ימים|days.*payab/i);
+  const custDays=ratioPeriodDays(custRatio,baseAvgCust,baseSales),invDays=ratioPeriodDays(invRatio,baseAvgInv,baseCost),suppDays=ratioPeriodDays(suppRatio,baseAvgSupp,basePurchases);
+  const custVal=sales&&Number.isFinite(custDays)?avgCust/sales*custDays:NaN;
+  const invVal=cost&&Number.isFinite(invDays)?avgInv/cost*invDays:NaN;
+  const suppVal=purchaseAmt&&Number.isFinite(suppDays)?avgSupp/purchaseAmt*suppDays:NaN;
+  apply(/ימי.*לקוחות|לקוחות.*ימים|days.*receiv/i,custVal,changed(customers)||changed(revenue),[
+    {label:'ממוצע לקוחות',value:avgCust,unit:defaultDisplayUnit()},
+    {label:'הכנסות',value:sales,unit:defaultDisplayUnit()},
+    {label:'ימי התקופה',value:custDays,unit:'ימים'},
+    {label:'השפעת פקודות ידניות',value:Number.isFinite(custVal)?custVal-baseRatioCurrent(custRatio):0,unit:(custRatio&&custRatio.unit)||'ימים',__manualAdjustment:true}
+  ],'ממוצע לקוחות / הכנסות × ימי התקופה',sales?fmt(avgCust)+' / '+fmt(sales)+' × '+fmt(custDays):'');
+  apply(/ימי.*מלאי|מלאי.*ימים|days.*invent/i,invVal,changed(inventory)||changed(cogs),[
+    {label:'ממוצע מלאי',value:avgInv,unit:defaultDisplayUnit()},
+    {label:'עלות המכר',value:cost,unit:defaultDisplayUnit()},
+    {label:'ימי התקופה',value:invDays,unit:'ימים'},
+    {label:'השפעת פקודות ידניות',value:Number.isFinite(invVal)?invVal-baseRatioCurrent(invRatio):0,unit:(invRatio&&invRatio.unit)||'ימים',__manualAdjustment:true}
+  ],'ממוצע מלאי / עלות המכר × ימי התקופה',cost?fmt(avgInv)+' / '+fmt(cost)+' × '+fmt(invDays):'');
+  apply(/ימי.*ספקים|ספקים.*ימים|days.*payab/i,suppVal,changed(suppliers)||changed(purchases)||(!purchases&&changed(cogs)),[
+    {label:'ממוצע ספקים',value:avgSupp,unit:defaultDisplayUnit()},
+    {label:purchases?'קניות':'עלות המכר',value:purchaseAmt,unit:defaultDisplayUnit()},
+    {label:'ימי התקופה',value:suppDays,unit:'ימים'},
+    {label:'השפעת פקודות ידניות',value:Number.isFinite(suppVal)?suppVal-baseRatioCurrent(suppRatio):0,unit:(suppRatio&&suppRatio.unit)||'ימים',__manualAdjustment:true}
+  ],'ממוצע ספקים / קניות (או עלות המכר) × ימי התקופה',purchaseAmt?fmt(avgSupp)+' / '+fmt(purchaseAmt)+' × '+fmt(suppDays):'');
+  const depAmt=pnlEconomicAmount(depr,'current'),intAmt=pnlEconomicAmount(interest,'current'),taxAmt=pnlEconomicAmount(tax,'current'),pbtAmt=pnlEconomicAmount(pbt,'current');
+  const depRatio=ratioRowByRegex(/שיעור.*פחת|פחת.*%|depreciation.*rate/i),intRatio=ratioRowByRegex(/שיעור.*ריבית|ריבית.*%|interest.*rate/i),taxRatio=ratioRowByRegex(/שיעור.*מס|מס.*אפקטיבי|effective.*tax|tax.*rate/i);
+  const depVal=avgPpe?depAmt/avgPpe:NaN,intVal=avgLoans?intAmt/avgLoans:NaN,taxVal=pbtAmt?taxAmt/pbtAmt:NaN;
+  apply(/שיעור.*פחת|פחת.*%|depreciation.*rate/i,depVal,changed(depr)||changed(grossPpe),[
+    {label:'פחת והפחתות',value:depAmt,unit:defaultDisplayUnit()},
+    {label:'ממוצע רכוש קבוע ברוטו',value:avgPpe,unit:defaultDisplayUnit()},
+    {label:'השפעת פקודות ידניות',value:Number.isFinite(depVal)?depVal-baseRatioCurrent(depRatio):0,unit:(depRatio&&depRatio.unit)||'',__manualAdjustment:true}
+  ],'פחת / ממוצע רכוש קבוע ברוטו',avgPpe?fmt(depAmt)+' / '+fmt(avgPpe):'');
+  apply(/שיעור.*ריבית|ריבית.*%|interest.*rate/i,intVal,changed(interest)||changed(loans),[
+    {label:'הוצאות ריבית',value:intAmt,unit:defaultDisplayUnit()},
+    {label:'ממוצע הלוואות',value:avgLoans,unit:defaultDisplayUnit()},
+    {label:'השפעת פקודות ידניות',value:Number.isFinite(intVal)?intVal-baseRatioCurrent(intRatio):0,unit:(intRatio&&intRatio.unit)||'',__manualAdjustment:true}
+  ],'ריבית / ממוצע הלוואות',avgLoans?fmt(intAmt)+' / '+fmt(avgLoans):'');
+  apply(/שיעור.*מס|מס.*אפקטיבי|effective.*tax|tax.*rate/i,taxVal,changed(tax)||changed(pbt),[
+    {label:'מסים על ההכנסה',value:taxAmt,unit:defaultDisplayUnit()},
+    {label:'רווח לפני מס',value:pbtAmt,unit:defaultDisplayUnit()},
+    {label:'השפעת פקודות ידניות',value:Number.isFinite(taxVal)?taxVal-baseRatioCurrent(taxRatio):0,unit:(taxRatio&&taxRatio.unit)||'',__manualAdjustment:true}
+  ],'מסים על ההכנסה / רווח לפני מס',pbtAmt?fmt(taxAmt)+' / '+fmt(pbtAmt):'');
+}
+function recomputeManualAffectedMetrics(ebitdaEconomicImpact,affected){ const pnl=DATA.pages&&DATA.pages.pnl,ratios=((DATA.pages||{}).ratios||{}).rows||[]; if(pnl){ const pmap=byId(pnl),mult=basePnlRevenueSign('current')||basePnlRevenueSign('compare')||-1; const econ=id=>{ const row=pmap[id]; return row?mult*effectivePageRowCurrent('pnl',row):null; }; const gross=econ('pnl_r236'),oper=econ('pnl_r270'),net=econ('pnl_r289'); [['ratios_R01',gross],['ratios_R06',oper],['ratios_R07',net]].forEach(([id,val])=>{ const r=ratios.find(x=>x.id===id); if(r&&val!==null) r.current=val; }); const salesRow=pmap['pnl_metric_sales']||(pnl.rows||[]).find(r=>String(r.name||'').trim()==='סה"כ מכירות')||(pnl.rows||[]).find(r=>/^T(?:\d+)?$/i.test(String(r.code||''))); const sales=salesRow?Math.abs(effectivePageRowCurrent('pnl',salesRow)):0; [['ratios_R02','ratios_R01'],['ratios_R08','ratios_R06'],['ratios_R09','ratios_R07']].forEach(([pctId,valId])=>{ const p=ratios.find(x=>x.id===pctId),v=ratios.find(x=>x.id===valId); if(p&&v&&sales) p.current=(Number(v.current)||0)/sales; }); const ebitda=ratios.find(x=>x.id==='ratios_R03'); if(ebitda&&ebitdaEconomicImpact) ebitda.current=(Number(ebitda.current)||0)+ebitdaEconomicImpact; } const ca=findBalanceMetric(['balance_macro_ca','balance_total_ca'],['נכסים שוטפים','סה"כ נכסים שוטפים']); const cl=findBalanceMetric(['balance_macro_cl','balance_total_cl'],['התחייבויות שוטפות','סה"כ התחייבויות שוטפות']); if(ca&&cl){ const caEco=balanceEconomicCurrent(ca,'asset'),clEco=balanceEconomicCurrent(cl,'liability'); const wc=ratios.find(x=>x.id==='ratios_R05')||ratios.find(x=>/הון חוזר/.test(String(x.name||''))); if(wc) wc.current=caEco-clEco; const currentRatio=ratios.find(x=>/יחס שוטף/.test(String(x.name||''))); if(currentRatio&&clEco!==0) currentRatio.current=caEco/clEco; } const ebitda=ratios.find(x=>x.id==='ratios_R03'); const ebitdaMargin=ratios.find(x=>/שיעור.*EBITDA|EBITDA.*%/.test(String(x.name||''))); if(ebitda&&ebitdaMargin&&pnl){ const salesRow=((pnl.rows||[]).find(r=>r.id==='pnl_metric_sales')||(pnl.rows||[]).find(r=>String(r.name||'').includes('מכירות')||String(r.name||'').includes('הכנסות'))); const sales=salesRow?Math.abs(effectivePageRowCurrent('pnl',salesRow)):0; if(sales) ebitdaMargin.current=(Number(ebitda.current)||0)/sales; } recomputeExtendedManualRatios(affected||new Set()); syncManualRatioCalculationDetails(); }
+function manualEntryKpiImpact(entry,kpiId){ let total=0; const revenueSign=basePnlRevenueSign('current')||basePnlRevenueSign('compare')||-1; const ca=findBalanceMetric(['balance_macro_ca','balance_total_ca'],['נכסים שוטפים','סה"כ נכסים שוטפים']),cl=findBalanceMetric(['balance_macro_cl','balance_total_cl'],['התחייבויות שוטפות','סה"כ התחייבויות שוטפות']); (entry&&entry.legs||[]).forEach(leg=>{ const row=findRow(leg.sectionId),stored=Math.abs(Number(leg.delta)||0),delta=manualPostingDelta(leg.sectionId,leg.side,stored); if(!row||delta===null||!delta) return; if(kpiId==='ratios_R05'&&!String(leg.sectionId).startsWith('pnl_')){ const hitCA=ca&&rowContainsAffected('balance',ca,new Set([leg.sectionId])),hitCL=cl&&rowContainsAffected('balance',cl,new Set([leg.sectionId])); if(hitCA) total+=delta*balanceConventionSign('asset'); if(hitCL) total-=delta*balanceConventionSign('liability'); return; } if(!String(leg.sectionId).startsWith('pnl_')) return; const milestones=pnlItemMilestones(leg.sectionId),econ=revenueSign*delta,name=String(row.name||''),code=String(row.code||'').toUpperCase(); if(kpiId==='ratios_R01'&&milestones.includes('r236')) total+=econ; else if(kpiId==='ratios_R06'&&milestones.includes('r270')) total+=econ; else if(kpiId==='ratios_R07'&&milestones.includes('r289')) total+=econ; else if(kpiId==='ratios_R03'&&milestones.includes('r270')&&!/^VD|^VE/.test(code)&&!/פחת|הפחת|depreciat|amorti|מסים.*הכנסה|מיסים.*הכנסה|חברות מוחזקות|associate/i.test(name)) total+=econ; }); return total; }
+function syncManualKpiDetails(){ const baseRatios=((((BASE_DATA_FOR_MANUAL.pages||{}).ratios||{}).rows)||[]),ratios=((((DATA.pages||{}).ratios||{}).rows)||[]); if(!DATA.kpiDetails||typeof DATA.kpiDetails!=='object') DATA.kpiDetails={}; ratios.forEach(row=>{ const id=row&&row.id,base=baseRatios.find(r=>r.id===id); if(!id||!base) return; const delta=(Number(row.current)||0)-(Number(base.current)||0); if(Math.abs(delta)<0.0000001) return; const baseDetail=((BASE_DATA_FOR_MANUAL.kpiDetails||{})[id])||{},detail=DATA.kpiDetails[id]||(DATA.kpiDetails[id]=JSON.parse(JSON.stringify(baseDetail))); if(!Array.isArray(detail.current)) detail.current=[]; detail.current=detail.current.filter(x=>x&&!x.__manualAdjustment&&!x.__manualEntryAdjustment); let resultIndex=detail.current.findIndex(x=>x&&((x.operator==='=')||x.isResult)); const entryItems=[]; let recognizedImpact=0; (manualEntries||[]).forEach(entry=>{ if(manualEntryApplicationIssue(entry)) return; const impact=manualEntryKpiImpact(entry,id); if(Math.abs(impact)<0.0000001) return; recognizedImpact+=impact; const ref=String(entry.reference||'').trim(),desc=String(entry.description||'פקודה ידנית').trim(); entryItems.push({operator:impact>=0?'+':'−',label:'פקודה ידנית — '+desc+(ref?' ['+ref+']':''),value:Math.abs(impact),__manualEntryAdjustment:true,manualEntryId:entry.id}); }); const residual=delta-recognizedImpact; if(entryItems.length&&Math.abs(residual)>=0.0000001) entryItems.push({operator:residual>=0?'+':'−',label:'השפעת פקודות ידניות שלא פוצלה',value:Math.abs(residual),__manualAdjustment:true}); if(entryItems.length){ if(resultIndex<0){ detail.current.push(...entryItems); detail.current.push({operator:'=',label:'לאחר פקודות ידניות',value:Number(row.current)||0,isResult:true}); } else detail.current.splice(resultIndex,0,...entryItems); } else { const item={operator:delta>=0?'+':'−',label:'השפעת פקודות ידניות',value:Math.abs(delta),__manualAdjustment:true}; if(resultIndex>=0) detail.current.splice(resultIndex,0,item); else detail.current.push(item); } let result=detail.current.find(x=>x&&((x.operator==='=')||x.isResult)); if(result) result.value=Number(row.current)||0; else detail.current.push({operator:'=',label:'לאחר פקודות ידניות',value:Number(row.current)||0,isResult:true}); if(!detail.formula) detail.formula='הערך כולל את השפעת הפקודות הידניות על רכיבי החישוב.'; }); }
+function isCashBalanceSection(sectionId){ const page=DATA.pages&&DATA.pages.balance,row=page&&byId(page)[sectionId]; if(!row||balanceNatureForSection(sectionId)!=='asset') return false; const text=[row.id,row.code,row.name].join(' ').toLowerCase(); return /מזומ|שווה.?מזומ|cash|bank/.test(text); }
+function manualEntryCashImpact(entry){ let impact=0; (entry&&entry.legs||[]).forEach(leg=>{ if(!isCashBalanceSection(leg.sectionId)) return; const d=manualPostingDelta(leg.sectionId,leg.side,Math.abs(Number(leg.delta)||0)); if(d!==null) impact+=d*balanceConventionSign('asset'); }); return impact; }
+function addManualCashflowWarning(entry,message){ const d=DATA.diagnostics||(DATA.diagnostics={issues:[]}); if(!Array.isArray(d.issues)) d.issues=[]; d.issues.push({severity:'warning',type:'פקודה ידנית — תזרים מזומנים',page:'cashflow',code:entry&&entry.reference||'',message}); }
+function cashflowRowContains(ancestorId,descendantId){ const page=DATA.pages&&DATA.pages.cashflow;if(!page||ancestorId===descendantId)return ancestorId===descendantId;const map=byId(page),seen=new Set();const walk=id=>{if(seen.has(id))return false;seen.add(id);const r=map[id];return !!(r&&Array.isArray(r.children)&&(r.children.includes(descendantId)||r.children.some(walk)));};return walk(ancestorId); }
+function cashflowDisplaySign(){ const ending=findBestRowByRegex('cashflow',/יתרת.*מזומ.*(סוף|סיום)|מזומ.*בסוף|ending.*cash|cash.*end/i),beginning=findBestRowByRegex('cashflow',/יתרת.*מזומ.*(תחיל|פתיח)|מזומ.*בתחיל|beginning.*cash|cash.*begin/i),net=findBestRowByRegex('cashflow',/(גידול|קיטון|שינוי).*מזומ|net.*(increase|decrease|change).*cash/i); if(ending&&beginning&&net){ const diff=rowPeriodValue('cashflow',ending,'current')-rowPeriodValue('cashflow',beginning,'current'),nv=rowPeriodValue('cashflow',net,'current'); if(Math.abs(diff)>0.000001&&Math.abs(nv)>0.000001) return Math.sign(nv/diff)||1; } const cash=findBestRowByRegex('balance',/מזומנים|מזומ.*שווה|cash/i); if(ending&&cash){ const ev=rowPeriodValue('cashflow',ending,'current'),cv=balanceEconomicCurrent(cash,'asset'); if(Math.abs(ev)>0.000001&&Math.abs(cv)>0.000001) return Math.sign(ev/cv)||1; } return 1; }
+function applyManualCashflowAdjustment(entry){ const economicImpact=manualEntryCashImpact(entry); if(Math.abs(economicImpact)<0.0000001) return; const cls=String(entry.cashflowClassification||''); if(cls==='not_relevant'){ addManualCashflowWarning(entry,'הפקודה הידנית "'+String(entry.description||'')+'" משפיעה על מזומן ולכן לא ניתן להתייחס אליה כלא רלוונטית לתזרים. יש לסווג אותה לפעילות שוטפת / השקעה / מימון.'); return; } if(!['operating','investing','financing'].includes(cls)){ addManualCashflowWarning(entry,'הפקודה הידנית "'+String(entry.description||'')+'" משפיעה על מזומן אך טרם סווגה לפעילות שוטפת / השקעה / מימון.'); return; } const page=DATA.pages&&DATA.pages.cashflow; if(!page){ addManualCashflowWarning(entry,'הפקודה משפיעה על מזומן אך לא קיים דוח תזרים בדשבורד.'); return; } const patterns={operating:/פעילות שוטפת|שוטפת|operating/i,investing:/פעילות השקעה|השקעה|investing/i,financing:/פעילות מימון|מימון|financing/i}; const category=findBestRowByRegex('cashflow',patterns[cls]); if(!category){ addManualCashflowWarning(entry,'הפקודה סווגה לתזרים, אך לא נמצא סעיף מתאים בדוח התזרים לצורך שיוך אוטומטי.'); return; } const impact=economicImpact*cashflowDisplaySign(),bridgeId='cashflow_manual_'+cls,bridgeName='השפעת פקודות ידניות — '+({operating:'פעילות שוטפת',investing:'פעילות השקעה',financing:'פעילות מימון'}[cls]); if(Array.isArray(category.children)&&category.children.length){ let bridge=(page.rows||[]).find(r=>r.id===bridgeId); if(!bridge){ bridge={id:bridgeId,code:'',name:bridgeName,current:0,compare:0,type:'item',unit:category.unit||defaultDisplayUnit(),__manualAdjustment:true}; page.rows.push(bridge); category.children.push(bridgeId); } bridge.current=(Number(bridge.current)||0)+impact; } else category.current=(Number(category.current)||0)+impact; const net=findBestRowByRegex('cashflow',/(גידול|קיטון|שינוי).*מזומ|net.*(increase|decrease|change).*cash/i),ending=findBestRowByRegex('cashflow',/יתרת.*מזומ.*(סוף|סיום)|מזומ.*בסוף|ending.*cash|cash.*end/i); if(net&&!(net.children&&net.children.length)&&net.id!==category.id&&!cashflowRowContains(net.id,category.id)) net.current=(Number(net.current)||0)+impact; if(ending&&!(ending.children&&ending.children.length)&&ending.id!==category.id&&(!net||ending.id!==net.id)) ending.current=(Number(ending.current)||0)+impact; }
+function manualEntryApplicationIssue(entry){ const legs=Array.isArray(entry&&entry.legs)?entry.legs:[]; if(!legs.length) return 'לא נמצאו צדדים תקינים לפקודה'; for(const leg of legs){ const sectionId=String(leg&&leg.sectionId||''),side=String(leg&&leg.side||''),amount=Math.abs(Number(leg&&leg.delta)||0),row=findRow(sectionId); if(!row) return 'אחד מסעיפי הפקודה אינו קיים בדשבורד'; if(!['debit','credit'].includes(side)) return 'לא ניתן לזהות חובה או זכות באחד מצדי הפקודה'; if(!amount) return 'אחד מצדי הפקודה מכיל סכום חסר או אפס'; if(manualPostingDelta(sectionId,side,amount)===null) return 'לא ניתן לקבוע באופן אמין את כיוון הרישום באחד מסעיפי הפקודה'; if(sectionId.startsWith('pnl_')&&!pnlItemMilestones(sectionId).length) return 'לא ניתן לקבוע באופן אמין כיצד סעיף רווח והפסד זורם לרווחים ול-KPI'; } return ''; }
+function addManualEntryApplicationWarning(entry,message){ const d=DATA.diagnostics||(DATA.diagnostics={issues:[]}); if(!Array.isArray(d.issues)) d.issues=[]; const marker='manual-entry-application:'+String((entry&&entry.id)||''); if(d.issues.some(x=>x&&x.__manualEntryApplicationMarker===marker)) return; d.issues.push({severity:'warning',type:'פקודה ידנית — לא יושמה',page:'pnl',code:entry&&entry.reference||'',message:'הפקודה הידנית "'+String(entry&&entry.description||'')+'" לא יושמה: '+message+'.',__manualEntryApplicationMarker:marker}); }
+function applyManualEntriesToData(){ if(!Array.isArray(manualEntries)||!manualEntries.length) return; let netEconomicImpact=0,ebitdaEconomicImpact=0,pbtEconomicImpact=0; const affected=new Set(),revenueSign=basePnlRevenueSign('current')||basePnlRevenueSign('compare')||-1; manualEntries.forEach(entry=>{ const applicationIssue=manualEntryApplicationIssue(entry); if(applicationIssue){ addManualEntryApplicationWarning(entry,applicationIssue); return; } (entry.legs||[]).forEach(leg=>{ const row=findRow(leg.sectionId); const storedAmount=Math.abs(Number(leg.delta)||0); const normalizedDelta=manualPostingDelta(leg.sectionId,leg.side,storedAmount); const delta=normalizedDelta===null?(Number(leg.delta)||0):normalizedDelta; if(!row||!delta) return; leg.delta=delta; affected.add(leg.sectionId); row.current=(Number(row.current)||0)+delta; const drill=DATA.drilldownData[leg.sectionId]||(DATA.drilldownData[leg.sectionId]=[]); const manualCode='MANUAL-'+String(entry.id||Date.now()); drill.push({account:manualCode,code:manualCode,reference:entry.reference||'',desc:entry.description||'פקודה ידנית',current:delta,compare:0,currency:defaultDisplayUnit(),sourceType:'additional_entry',side:leg.side||'',manualEntryId:entry.id,manualEntry:true,counterparties:(entry.legs||[]).filter(x=>x!==leg).map(x=>{ const rr=findRow(x.sectionId); return {name:(rr&&rr.name)||x.sectionId,account:(rr&&rr.code)||'',amount:Math.abs(Number(x.delta)||0),side:x.side||''}; })}); if(String(leg.sectionId).startsWith('pnl_')){ const milestones=pnlItemMilestones(leg.sectionId),econ=revenueSign*delta; milestones.forEach(k=>{ const mr=findRow('pnl_'+k); if(mr&&!(mr.children&&mr.children.length)) mr.current=(Number(mr.current)||0)+delta; }); if(milestones.includes('r289')) netEconomicImpact+=econ; const name=String(row.name||''),code=String(row.code||'').toUpperCase(); if(!/^VD|^VE/.test(code)&&!/מסים.*הכנסה|מיסים.*הכנסה|חברות מוחזקות|associate/i.test(name)) pbtEconomicImpact+=econ; if(milestones.includes('r270')&&!/פחת|הפחת|depreciat|amorti/i.test(name)) ebitdaEconomicImpact+=econ; } }); applyManualCashflowAdjustment(entry); }); const pnl=DATA.pages&&DATA.pages.pnl,pbt=pnl&&(((pnl.rows||[]).find(r=>r.id==='pnl_metric_pbt'))||findBestRowByRegex('pnl',/רווח.*לפני.*מס|הפסד.*לפני.*מס|profit.*before.*tax/i)); if(pbt&&pbtEconomicImpact&&!(pbt.children&&pbt.children.length)){ pbt.current=(Number(pbt.current)||0)+revenueSign*pbtEconomicImpact; affected.add(pbt.id); } ensureManualEquityBridge(netEconomicImpact); recomputeManualAffectedMetrics(ebitdaEconomicImpact,affected); syncManualRatioCalculationDetails(); syncManualKpiDetails(); }
+function normalizePnlHierarchy(){
+  const page=((DATA.pages||{}).pnl);
+  if(!page || !Array.isArray(page.rows)) return;
+
+  const rows=page.rows;
+  const rowById={};
+  const byCodeMap={};
+  rows.forEach(row=>{
+    if(!row || !row.id) return;
+    rowById[row.id]=row;
+    const code=String(row.code||'').trim().toUpperCase();
+    if(code) byCodeMap[code]=row;
+  });
+
+  // מכבד קודם כל section/children שה-JSON כבר סיפק.
+  rows.forEach(row=>{
+    if(!row || row.type!=='section') return;
+    const existing=Array.isArray(row.children)?row.children.filter(id=>rowById[id]):[];
+    if(existing.length){
+      row.children=existing;
+      return;
+    }
+    const sourceCodes=Array.isArray(row.sourceCodes)?row.sourceCodes:[];
+    const inferred=[];
+    sourceCodes.forEach(code=>{
+      const child=byCodeMap[String(code||'').trim().toUpperCase()];
+      if(child && child.id && child.id!==row.id && !inferred.includes(child.id)) inferred.push(child.id);
+    });
+    if(inferred.length) row.children=inferred;
+  });
+
+  // אם קבוצה אמיתית ב-P&L הגיעה ללא section, יוצרים section תצוגתי בלבד
+  // לפי משפחת הקוד. לא משנים מספרים ולא נוגעים ב-Drill-down.
+  const groupLabels={
+    T:'הכנסות',
+    U:'עלות המכר',
+    V:'הוצאות מכירה ושיווק',
+    W:'הוצאות הנהלה וכלליות',
+    VA:'הוצאות (הכנסות) מימון',
+    VB:'הוצאות (הכנסות) אחרות',
+    VD:'מסים על ההכנסה',
+    VE:'חלק ברווחי (הפסדי) חברות מוחזקות'
+  };
+
+  const childIdsAlreadyUsed=new Set();
+  rows.forEach(row=>{
+    if(row && row.type==='section' && Array.isArray(row.children)){
+      row.children.forEach(id=>childIdsAlreadyUsed.add(id));
+    }
+  });
+
+  const groupMembers={};
+  rows.forEach(row=>{
+    if(!row || row.type==='section' || !row.id || childIdsAlreadyUsed.has(row.id)) return;
+    const code=String(row.code||'').trim().toUpperCase();
+    const m=code.match(/^(VA|VB|VD|VE|T|U|V|W)(?=[\d._-])/);
+    if(!m) return;
+    const group=m[1];
+    (groupMembers[group]||(groupMembers[group]=[])).push(row);
+  });
+
+  const syntheticSections=[];
+  Object.entries(groupMembers).forEach(([group,members])=>{
+    // אקורדיון נוצר רק כשיש יותר מתת-סעיף אחד.
+    if(!groupLabels[group] || members.length<2) return;
+
+    // אם כבר יש section שמכסה חלק מהקבוצה, לא יוצרים כפילות.
+    const hasExistingSection=rows.some(row=>{
+      if(!row || row.type!=='section' || !Array.isArray(row.children)) return false;
+      return row.children.some(id=>members.some(m=>m.id===id));
+    });
+    if(hasExistingSection) return;
+
+    const syntheticId='pnl_auto_section_'+group;
+    if(rowById[syntheticId]) return;
+
+    syntheticSections.push({
+      id:syntheticId,
+      code:'',
+      name:groupLabels[group],
+      current:0,
+      compare:0,
+      type:'section',
+      children:members.map(m=>m.id),
+      sourceCodes:members.map(m=>m.code).filter(Boolean),
+      __templateGenerated:true
+    });
+  });
+
+  syntheticSections.forEach(section=>{
+    rows.push(section);
+    rowById[section.id]=section;
+  });
+
+  // כל ילד של section מופיע דרך האב בלבד, כדי שקיפול באמת יסתיר אותו.
+  const childIds=new Set();
+  rows.forEach(row=>{
+    if(row && row.type==='section' && Array.isArray(row.children)){
+      row.children.forEach(id=>childIds.add(id));
+    }
+  });
+
+  const originalRoots=Array.isArray(page.roots)?page.roots.slice():[];
+  const nextRoots=[];
+  const insertedSynthetic=new Set();
+
+  originalRoots.forEach(rootId=>{
+    if(childIds.has(rootId)){
+      const synthetic=syntheticSections.find(section=>section.children.includes(rootId));
+      if(synthetic && !insertedSynthetic.has(synthetic.id)){
+        nextRoots.push(synthetic.id);
+        insertedSynthetic.add(synthetic.id);
+      }
+      return;
+    }
+    nextRoots.push(rootId);
+  });
+
+  syntheticSections.forEach(section=>{
+    if(!insertedSynthetic.has(section.id)){
+      nextRoots.push(section.id);
+      insertedSynthetic.add(section.id);
+    }
+  });
+
+  page.roots=nextRoots;
+}
+normalizePnlHierarchy();
+
+const expanded = {};
+Object.entries(DATA.pages || {}).forEach(([key, page]) => expanded[key] = new Set(page.roots || []));
+function fmt(n, unit){ n = Number(n) || 0; return new Intl.NumberFormat('he-IL',{maximumFractionDigits: unit === '%' ? 1 : 1}).format(n); }
+function cls(n){ return n > 0 ? 'up' : n < 0 ? 'down' : ''; }
+function pct(n){ return (Math.round((Number(n) || 0) * 10) / 10).toFixed(1) + '%'; }
+function pctChange(current,compare){
+  const c=Number(current)||0, p=Number(compare)||0;
+  if(p===0 && c===0) return '—';
+  if(p===0 && c!==0) return 'N/A';
+  if(p!==0 && c===0) return '-100.0%';
+  return pct((c-p)/Math.abs(p)*100);
+}
+function variance(row){ const current = Number(row.current) || 0; const compare = Number(row.compare) || 0; const diff = current - compare; const percent = compare === 0 ? (current === 0 ? 0 : 100) : diff / Math.abs(compare) * 100; return {diff, pct: percent}; }
+function pnlRevenueSign(period){ return resolvedPnlRevenueSign(DATA,period); }
+function pnlEconomicKind(row){
+  const id=String((row&&row.id)||''); const code=String((row&&row.code)||'').toUpperCase(); const name=String((row&&row.name)||'').trim();
+  if(['pnl_r236','pnl_r270','pnl_r289','pnl_metric_pbt','pnl_metric_associates'].includes(id)) return 'profit';
+  if(id==='pnl_metric_gross_margin_pct') return 'higher';
+  if(id==='pnl_metric_sales') return 'income';
+  if(['pnl_metric_cogs','pnl_metric_selling','pnl_metric_ga','pnl_metric_finance','pnl_metric_tax'].includes(id)) return 'expense';
+  const hasIncome=/הכנס/.test(name), hasExpense=/הוצא|עלות|מסים|מיסים/.test(name);
+  if(hasIncome&&!hasExpense) return 'income';
+  if(hasExpense&&!hasIncome) return 'expense';
+  if(/רווח|הפסד/.test(name)) return 'profit';
+  if(/^T\d*$/i.test(code)) return 'income';
+  if(/^(U|V|W|VD)\d*$/i.test(code)) return 'expense';
+  if(/^VA\d*$/i.test(code)) return 'expense';
+  return 'raw';
+}
+function pnlEconomicScore(row,current,compare){
+  const c=Number(current)||0,p=Number(compare)||0,kind=pnlEconomicKind(row);
+  if(kind==='higher') return c-p;
+  if(kind==='profit'){
+    const ratioMap={pnl_r236:'ratios_R01',pnl_r270:'ratios_R06',pnl_r289:'ratios_R07'};
+    const ratioId=ratioMap[String(row&&row.id||'')];
+    if(ratioId){ const rr=((((DATA.pages||{}).ratios||{}).rows)||[]).find(x=>x.id===ratioId); if(rr) return (Number(rr.current)||0)-(Number(rr.compare)||0); }
+  }
+  const currentRevenueSign=pnlRevenueSign('current');
+  const compareRevenueSign=pnlRevenueSign('compare');
+  const economicCurrent=currentRevenueSign*c;
+  const economicCompare=compareRevenueSign*p;
+  return economicCurrent-economicCompare;
+}
+function economicChangeClass(pageKey,row,current,compare){ return pageKey==='pnl'?cls(pnlEconomicScore(row,current,compare)):cls((Number(current)||0)-(Number(compare)||0)); }
+function economicTrendValue(pageKey,row,current,compare){ return pageKey==='pnl'?pnlEconomicScore(row,current,compare):((Number(current)||0)-(Number(compare)||0)); }
+function byId(page){ const result = {}; (page.rows || []).forEach(row => result[row.id] = row); return result; }
+function sumRow(row, map){ if(!row.children || !row.children.length){ return {current: Number(row.current)||0, compare: Number(row.compare)||0}; } let current=0, compare=0; row.children.forEach(cid => { const child = map[cid]; if(!child) return; const cv = sumRow(child, map); current += cv.current; compare += cv.compare; }); return {current, compare}; }
+function visibleRows(pageKey, ids, level, out){ const page = DATA.pages[pageKey]; if(!page) return []; const map = byId(page); const output = out || []; (ids || page.roots || []).forEach(id => { const row = map[id]; if(!row) return; output.push({row, level: level || 0}); if(row.children && row.children.length && expanded[pageKey].has(id)){ visibleRows(pageKey, row.children, (level || 0) + 1, output); } }); return output; }
+// Legacy fallback for old JSON files only. New JSON uses row.hideNumbers.
+const NO_TOTALS_IDS = new Set(['pnl_r205']);
+function rowHtml(item, pageKey){ const row = item.row; const hasChildren = row.children && row.children.length; const map = byId(DATA.pages[pageKey]); const vals = hasChildren ? sumRow(row, map) : {current: Number(row.current)||0, compare: Number(row.compare)||0}; const isGrossMarginPct = row.id === 'pnl_metric_gross_margin_pct'; const displayVals = isGrossMarginPct ? {current: vals.current*100, compare: vals.compare*100} : vals; const v = variance(displayVals); const hideNums = row.hideNumbers === true || NO_TOTALS_IDS.has(row.id); const rowClass = (row.type === 'section' ? 'section-row' : row.type === 'metric' ? 'metric-row' : '') + (hasChildren ? ' parent-row' : ''); const toggle = hasChildren ? '<span class="tree-toggle">' + (expanded[pageKey].has(row.id) ? '−' : '+') + '</span>' : '<span class="leaf-note">•</span>'; const noteFlag = auditNotes[row.id] ? '<span class="note-flag" title="יש הערת ביקורת">📝</span>' : ''; const materialFlag = (Math.abs(v.diff) >= materialityThreshold) ? '<span class="material-flag" title="חוצה סף מהותיות">!</span>' : ''; const displayUnit = isGrossMarginPct ? '%' : row.unit; const curCell = hideNums ? '' : ('<button class="number-link" data-row-id="' + row.id + '">' + fmt(displayVals.current, displayUnit) + '</button>'); const cmpCell = hideNums ? '' : fmt(displayVals.compare, displayUnit); const diffCell = hideNums ? '' : (fmt(v.diff, displayUnit) + materialFlag); const pctCell = hideNums ? '' : pctChange(displayVals.current,displayVals.compare); const changeClass=hideNums?'':(pageKey==='balance'?(v.diff>0?'balance-up':v.diff<0?'balance-down':''):economicChangeClass(pageKey,row,displayVals.current,displayVals.compare)); const displayName=pageKey==='ratios'?ratioDisplayName(row):row.name; return '<tr class="clickable ' + rowClass + '" tabindex="0" data-row-id="' + row.id + '"><td class="' + (item.level ? 'lvl-' + item.level : '') + '" data-label="סעיף">' + toggle + '<span class="name">' + safe(displayName) + '</span>' + noteFlag + '</td><td data-label="קוד"><span class="code">' + safe(row.code || '') + '</span></td><td class="num" data-label="' + safe(DATA.dates.current) + '">' + curCell + '</td><td class="num" data-label="' + safe(DATA.dates.compare) + '">' + cmpCell + '</td><td class="num ' + changeClass + '" data-label="הפרש">' + diffCell + '</td><td class="num ' + changeClass + '" data-label="שינוי %">' + pctCell + '</td><td data-label="מטבע">' + safe(unitOf(displayUnit)) + '</td></tr>'; }
+function safe(value){ return String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function defaultDisplayUnit(){ const meta=DATA.meta||{}; return (meta.displayUnit||meta.currency||'').trim() || 'יחידות מקור'; }
+function unitOf(value){ const u=String(value==null?'':value).trim(); return u || defaultDisplayUnit(); }
+function computeHealthStats(){ let totalLines=0; const uniqueAccounts=new Set(); Object.values(DATA.drilldownData||{}).forEach(rows => { (rows||[]).forEach(r => { totalLines++; const acc=r.account||r.code; if(acc) uniqueAccounts.add(acc); }); }); let errors=0; ['balance','pnl','cashflow','ratios'].forEach(key => { const page=DATA.pages[key]; if(!page) return; (page.rows||[]).forEach(row => { if(row.current!=null && isNaN(Number(row.current))) errors++; if(row.compare!=null && isNaN(Number(row.compare))) errors++; }); }); const d=DATA.diagnostics||{}; const warnings=Math.max(0,(d.drillSections||0)-(d.drillNonEmpty||0)); return {totalLines, uniqueAccounts: uniqueAccounts.size, errors, warnings}; }
+function healthStatusInfo(){
+  const d=DATA.diagnostics||{}, stats=computeHealthStats(), issues=Array.isArray(d.issues)?d.issues:[];
+  const issueErrors=issues.filter(i=>/error|critical|קריטי/i.test(String((i&&i.severity)||''))).length;
+  const issueWarnings=issues.filter(i=>/warning|warn|אזהרה/i.test(String((i&&i.severity)||''))).length;
+  const fxPartial=(d.fxSourceCandidates!=null && Number(d.fxSourceCandidates)>0 && Number(d.fxCoveragePct)!==100);
+  const hasHardProblem=stats.errors>0 || issueErrors>0;
+  const hasFindings=!hasHardProblem && (stats.warnings>0 || issueWarnings>0 || issues.length>0 || fxPartial);
+  if(hasHardProblem) return {key:'review',label:'נדרשת בדיקה',reason:'זוהו נתונים או ממצאים שמצריכים בדיקה.'};
+  if(hasFindings) return {key:'findings',label:'יש ממצאים',reason:'הנתונים נקלטו, אך קיימים ממצאים או אזהרות שכדאי לעבור עליהם.'};
+  return {key:'ok',label:'תקין',reason:'לא זוהו שגיאות או אזהרות מהותיות בבדיקות הקליטה הזמינות.'};
+}
+function healthDetailsHtml(){
+  const d=DATA.diagnostics||{}, pr=d.pageRows||{}, stats=computeHealthStats(), status=healthStatusInfo();
+  const issues=Array.isArray(d.issues)?d.issues:[];
+  const issueHtml=issues.length?'<div class="issues-list">'+issues.map(issue=>'<div class="issue-item '+safe((issue&&issue.severity)||'')+'"><div class="issue-title">'+safe((issue&&issue.type)||'ממצא')+'</div><div class="issue-msg">'+safe((issue&&issue.message)||'')+'</div></div>').join('')+'</div>':'<div class="info-card"><h3>ממצאים</h3><p>לא דווחו ממצאים מפורטים ב־diagnostics.</p></div>';
+  return '<div class="health-detail-summary"><h3>למה הסטטוס הוא "'+safe(status.label)+'"?</h3><p>'+safe(status.reason)+'</p></div><div class="health-grid">'+
+  '<div class="health-item">קבצים: '+safe((d.sourceFiles||[]).join(' + '))+'</div>'+
+  '<div class="health-item">תקופה נוכחית: '+safe(d.current||'')+'</div>'+
+  '<div class="health-item">תקופה השוואתית: '+safe(d.compare||'')+'</div>'+
+  '<div class="health-item">שורות מאזן: '+(pr.balance||0)+'</div>'+
+  '<div class="health-item">שורות רווח והפסד: '+(pr.pnl||0)+'</div>'+
+  '<div class="health-item">שורות תזרים: '+(pr.cashflow||0)+'</div>'+
+  '<div class="health-item">שורות יחסים: '+(pr.ratios||0)+'</div>'+
+  '<div class="health-item">פירוטים עם נתונים: '+(d.drillNonEmpty||0)+' מתוך '+(d.drillSections||0)+'</div>'+
+  '<div class="health-item">חשבונות שנקלטו: '+stats.uniqueAccounts+'</div>'+
+  '<div class="health-item">שורות נתונים שנקלטו: '+stats.totalLines+'</div>'+
+  '<div class="health-item">כיסוי מט"ח: '+(d.fxSourceCandidates!=null?safe((d.fxAuditRows||0)+' / '+(d.fxSourceCandidates||0)+' ('+(Number(d.fxCoveragePct)||0)+'%)'):'לא דווח')+'</div>'+
+  '<div class="health-item">אזהרות מבניות: '+stats.warnings+'</div>'+
+  '<div class="health-item">שגיאות מספריות: '+stats.errors+'</div>'+
+  '<div class="health-item">עודכן לאחרונה: '+safe(d.generatedAt||'')+'</div></div><div style="margin-top:14px">'+issueHtml+'</div>';
+}
+function renderHealth(){
+  const status=healthStatusInfo();
+  document.getElementById('healthBox').innerHTML='<button type="button" id="openHealthDetails" class="health-summary"><span class="health-summary-main"><strong>בדיקות קליטה:</strong><span class="health-status '+status.key+'">'+safe(status.label)+'</span></span><span class="health-open-hint">לחץ לפירוט ›</span></button>';
+}
+function openHealthDetails(){
+  const status=healthStatusInfo();
+  modalMode='health';
+  setModalActionsVisible(false);
+  document.getElementById('modalTitle').textContent='בדיקות קליטה: '+status.label;
+  document.getElementById('modalMeta').textContent='פירוט הבדיקות והסיבה לסטטוס';
+  document.getElementById('modalBody').innerHTML=healthDetailsHtml();
+  document.getElementById('modalBackdrop').classList.add('open');
+}
+function ratioRowById(id){ return (((DATA.pages||{}).ratios||{}).rows||[]).find(r=>r.id===id)||null; }
+function balanceMetricById(id){ return (((DATA.pages||{}).balance||{}).rows||[]).find(r=>r.id===id)||null; }
+function economicEquityCurrent(){ const b=balanceMetricById('balance_total_equity'); if(b) return effectivePageRowCurrent('balance',b)*balanceConventionSign('equity'); const candidates=(((DATA.pages||{}).balance||{}).rows||[]).filter(r=>/סה.?כ.*הון|הון עצמי/.test(String(r.name||''))); return candidates.length?effectivePageRowCurrent('balance',candidates[candidates.length-1])*balanceConventionSign('equity'):0; }
+function economicNetProfitCurrent(){ const r=ratioRowById('ratios_R07'); return r?(Number(r.current)||0):0; }
+function marketRatiosHtml(){ return '<div class="market-ratios"><div class="page-header"><h2>יחסי שווי שוק</h2><span class="hint">הזן שווי שוק באותה יחידת הצגה של הדשבורד</span></div><div class="market-ratios-grid"><div class="market-input-card"><label for="marketValueInput">שווי שוק החברה</label><input id="marketValueInput" type="number" min="0" step="any" placeholder="הזן שווי שוק"><div class="market-hint">יחידת הצגה: '+safe(defaultDisplayUnit())+'</div></div><div class="market-metric-card"><div class="market-label">יחס הון לשווי שוק</div><div class="market-value" id="marketEquityRatio">—</div><div class="market-hint">הון עצמי ÷ שווי שוק</div></div><div class="market-metric-card"><div class="market-label">מכפיל הון</div><div class="market-value" id="priceToBook">—</div><div class="market-hint">שווי שוק ÷ הון עצמי</div></div><div class="market-metric-card"><div class="market-label">מכפיל רווח</div><div class="market-value" id="priceEarnings">—</div><div class="market-hint">שווי שוק ÷ רווח נקי</div></div></div></div>'; }
+function updateMarketRatios(){ const input=document.getElementById('marketValueInput'); if(!input) return; const mv=Number(input.value); const equity=economicEquityCurrent(); const profit=economicNetProfitCurrent(); const er=document.getElementById('marketEquityRatio'), pb=document.getElementById('priceToBook'), pe=document.getElementById('priceEarnings'); if(!(mv>0)){ er.textContent=pb.textContent=pe.textContent='—'; return; } er.textContent=equity!==0?new Intl.NumberFormat('he-IL',{maximumFractionDigits:1}).format((equity/mv)*100)+'%':'—'; pb.textContent=equity!==0?new Intl.NumberFormat('he-IL',{maximumFractionDigits:2}).format(mv/equity)+'x':'—'; pe.textContent=profit>0?new Intl.NumberFormat('he-IL',{maximumFractionDigits:2}).format(mv/profit)+'x':(profit<0?'לא רלוונטי (הפסד)':'—'); }
+function renderPages(){ const host = document.getElementById('pagesHost'); const pageKeys = ['balance','pnl','cashflow','ratios']; host.innerHTML = pageKeys.map(key => { const page = DATA.pages[key]; return '<section id="' + key + '" class="page ' + (key === 'balance' ? 'active' : '') + '"><div class="page-header"><h2>' + safe(page.title) + '</h2><span class="hint">' + safe(page.hint) + '</span></div><div class="table-wrap"><table class="main-table"><thead><tr><th style="width:31%">סעיף</th><th style="width:9%">קוד</th><th>' + safe(DATA.dates.current) + '</th><th>' + safe(DATA.dates.compare) + '</th><th>הפרש</th><th>שינוי %</th><th style="width:8%">מטבע</th></tr></thead><tbody id="' + key + 'Body"></tbody></table></div>' + (key==='ratios'?marketRatiosHtml():'') + '</section>'; }).join('') + '<section id="comparisons" class="page"><div class="page-header"><h2>השוואות</h2><span class="hint">סיכום השוואתי</span></div><div class="cards" id="comparisonCards"></div></section><section id="settings" class="page"><div class="page-header"><h2>הגדרות</h2><span class="hint">מקורות ובדיקות</span></div><div class="cards"><div class="info-card"><h3>מקורות</h3><p>' + safe((DATA.sourceFiles || []).join(' + ')) + '</p><p class="hint" style="margin-top:8px">יחידת הצגה: ' + safe(defaultDisplayUnit()) + '</p></div><div class="info-card"><h3>בדיקות</h3><p>נתונים נטענו מתוך JSON פנימי תקין. אם שורה מסוימת אינה מציגה פירוט, אין לה מיפוי מאזן בוחן שנמצא בקבצים.</p></div></div></section>'; pageKeys.forEach(renderTable); renderComparisons(); }
+function renderTable(key){ const body = document.getElementById(key + 'Body'); if(body){ body.innerHTML = visibleRows(key).map(item => rowHtml(item, key)).join(''); } applyFilter(); }
+function trendArrow(n){ return n > 0 ? ' ↗' : n < 0 ? ' ↘' : ''; }
+function kpiProfitText(id,rate){
+  const rows=((DATA.pages.ratios||{}).rows||[]);
+  const row=rows.find(item=>item.id===id);
+  const negative=Number(row&&row.current)<0;
+  const names={
+    ratios_R01:negative?'הפסד גולמי':'רווח גולמי',
+    ratios_R06:negative?'הפסד תפעולי':'רווח תפעולי',
+    ratios_R07:negative?'הפסד נקי':'רווח נקי'
+  };
+  const label=names[id]||'';
+  return rate&&label?('שיעור '+label):label;
+}
+function ratioDisplayName(row){
+  if(!row) return '';
+  if(row.id==='ratios_R01') return kpiProfitText('ratios_R01',false);
+  if(row.id==='ratios_R02') return kpiProfitText('ratios_R01',true);
+  if(row.id==='ratios_R06') return kpiProfitText('ratios_R06',false);
+  if(row.id==='ratios_R08') return kpiProfitText('ratios_R06',true);
+  if(row.id==='ratios_R07') return kpiProfitText('ratios_R07',false);
+  if(row.id==='ratios_R09') return kpiProfitText('ratios_R07',true);
+  return row.name;
+}
+function renderKpis(){ const ratioRows = (DATA.pages.ratios && DATA.pages.ratios.rows) || []; const defs=[['ratios_R01','רווח גולמי'],['ratios_R03','EBITDA'],['ratios_R05','הון חוזר'],['ratios_R06','רווח תפעולי'],['ratios_R07','רווח נקי']]; document.getElementById('kpiArea').innerHTML = defs.map(([id,label]) => { const row = ratioRows.find(item => item.id === id) || {id:id,current:0,compare:0,unit:defaultDisplayUnit()}; const adj = {current:Number(row.current)||0, compare:Number(row.compare)||0}; const v = variance(adj); const displayLabel=(id==='ratios_R01'||id==='ratios_R06'||id==='ratios_R07')?kpiProfitText(id,false):label; return '<article class="kpi" tabindex="0" role="button" data-kpi-id="' + id + '" title="לחץ להצגת אופן החישוב"><div class="label">' + safe(displayLabel) + '</div><div class="value">' + fmt(adj.current, row.unit) + '</div><div class="note ' + cls(v.pct) + '">' + pctChange(adj.current,adj.compare) + trendArrow(v.pct) + '</div></article>'; }).join(''); }
+function renderComparisons(){ const rows = ((DATA.pages.ratios || {}).rows || []).slice(0,8); document.getElementById('comparisonCards').innerHTML = rows.map(row => { const v = variance(row); return '<div class="info-card"><h3>' + safe(row.name) + '</h3><p>נוכחי: ' + fmt(row.current,row.unit) + ' | השוואתי: ' + fmt(row.compare,row.unit) + ' | שינוי: <span class="' + cls(v.pct) + '">' + pctChange(row.current,row.compare) + '</span></p></div>'; }).join(''); }
+function ratioCalculationDetails(row){ return row&&row.calculationDetails&&typeof row.calculationDetails==='object'?row.calculationDetails:null; }
+function shortDateLabel(value){ const s=String(value||'').trim(); const m=s.match(/^(\d{2})\.(\d{2})\.(\d{4})$/); return m?(m[1]+'.'+m[2]+'.'+m[3].slice(-2)):s; }
+function ratioCalcBlock(label,detail,result,unit,ratioId){ if(!detail) return '<div class="info-card"><h3>'+safe(label)+'</h3><p>לא סופקו רכיבי חישוב מפורטים לתקופה זו.</p></div>'; const components=Array.isArray(detail.components)?detail.components:[]; const showOpeningDate=/^ratios_R1[1-3]$/.test(String(ratioId||'')); const openingDate=showOpeningDate?shortDateLabel(detail.openingBalanceDate):''; const compHtml=components.map(c=>{ let componentLabel=String(c.label||'רכיב'); if(openingDate && /פתיחה|תחילת\s*תקופה/.test(componentLabel)) componentLabel+=' ('+openingDate+')'; return '<div class="report-row"><span>'+safe(componentLabel)+'</span><b>'+fmt(Number(c.value)||0,c.unit||'')+'</b></div>'; }).join(''); const formula=detail.formula||''; const substitution=detail.substitution||''; return '<div class="info-card"><h3>'+safe(label)+'</h3>'+compHtml+(formula?'<p class="hint" style="margin-top:10px">נוסחה: '+safe(formula)+'</p>':'')+(substitution?'<p style="margin-top:6px"><b>'+safe(substitution)+'</b></p>':'')+'<p style="margin-top:8px"><b>תוצאה: '+fmt(Number(result)||0,unit)+'</b></p></div>'; }
+function openRatioCalculation(id){ const row=ratioRowById(id); if(!row) return; const details=ratioCalculationDetails(row); modalMode='ratioCalculation'; setModalActionsVisible(false); document.getElementById('modalTitle').textContent='אופן חישוב: '+(row.name||id); document.getElementById('modalMeta').textContent='המספרים ששימשו בפועל לחישוב היחס'; const body=details?(ratioCalcBlock(DATA.dates.current,details.current,row.current,row.unit,id)+ratioCalcBlock(DATA.dates.compare,details.compare,row.compare,row.unit,id)):'<div class="info-card"><h3>אין פירוט חישוב זמין</h3><p>היחס קיים, אך ה־JSON לא כלל את רכיבי החישוב ששימשו להפקתו.</p></div>'; document.getElementById('modalBody').innerHTML=body; document.getElementById('modalBackdrop').classList.add('open'); }
+function toggleOrOpen(id){ if(activePage==='ratios'&&/^ratios_R1[1-5]$/.test(id)){ openRatioCalculation(id); return; } const page = DATA.pages[activePage]; const row = byId(page)[id]; if(row && row.children && row.children.length){ if(expanded[activePage].has(id)){ expanded[activePage].delete(id); } else { expanded[activePage].add(id); } renderTable(activePage); return; } openDrilldown(id); }
+function calcRows(id){ return (DATA.drilldownData[id] || []).map(row => { const current = Number(row.current)||0; const compare = Number(row.compare)||0; const diff = current - compare; const percent = compare === 0 ? (current === 0 ? 0 : 100) : diff / Math.abs(compare) * 100; return Object.assign({}, row, {diff: diff, pct: percent}); }); }
+function firstChildParentInfo(id){
+  for(const pageKey of ['balance','pnl','cashflow','ratios']){
+    const page=DATA.pages[pageKey];
+    if(!page) continue;
+    const map=byId(page);
+    for(const row of (page.rows||[])){
+      const children=Array.isArray(row.children)?row.children:[];
+      if(children.length && children[0]===id) return {pageKey,row,map};
+    }
+  }
+  return null;
+}
+function sectionLeafIds(parentId,pageKey){
+  const page=DATA.pages[pageKey];
+  if(!page) return [];
+  const map=byId(page), out=[], seen=new Set();
+  const walk=(id)=>{
+    if(seen.has(id)) return;
+    seen.add(id);
+    const row=map[id];
+    if(!row) return;
+    const children=Array.isArray(row.children)?row.children:[];
+    if(children.length) children.forEach(walk);
+    else out.push(id);
+  };
+  walk(parentId);
+  return out;
+}
+function wholeSectionRowsFromFirstChild(id){
+  const info=firstChildParentInfo(id);
+  if(!info) return [];
+  const rows=[];
+  sectionLeafIds(info.row.id,info.pageKey).forEach(leafId=>{
+    const leaf=info.map[leafId];
+    calcRows(leafId).forEach(r=>rows.push(Object.assign({},r,{
+      subsectionName:leaf?leaf.name:'',
+      subsectionCode:leaf?(leaf.code||''):''
+    })));
+  });
+  return rows;
+}
+function wholeSectionCopyText(id){
+  const info=firstChildParentInfo(id);
+  if(!info) return '';
+  const rows=wholeSectionRowsFromFirstChild(id);
+  const headers=['סעיף ראשי','תת-סעיף','קוד תת-סעיף','חברה','מספר חשבון','תיאור חשבון',DATA.dates.current,DATA.dates.compare,'הפרש','שינוי %','מטבע','מקור'];
+  const lines=[headers.join('\t')];
+  rows.forEach(r=>lines.push([
+    info.row.name||'',r.subsectionName||'',r.subsectionCode||'',r.entity||'',
+    r.account||'',r.desc||'',r.current,r.compare,r.diff,r.pct/100,unitOf(r.currency),r.sourceType||''
+  ].join('\t')));
+  return lines.join('\n');
+}
+function copyWholeSectionData(){
+  if(!activeSectionId) return;
+  const rows=wholeSectionRowsFromFirstChild(activeSectionId);
+  if(!rows.length){ showToast('אין נתוני Drill-down להעתקה בסעיף זה'); return; }
+  copyText(wholeSectionCopyText(activeSectionId));
+}
+function exportWholeSectionToExcel(){
+  if(!activeSectionId) return;
+  const info=firstChildParentInfo(activeSectionId);
+  if(!info) return;
+  const rows=wholeSectionRowsFromFirstChild(activeSectionId);
+  if(!rows.length){ showToast('אין נתוני Drill-down לייצוא בסעיף זה'); return; }
+  const escX=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const safeName=String(info.row.name||info.row.id).replace(/[\\/:*?"<>|]/g,'_');
+  const headers=['סעיף ראשי','תת-סעיף','קוד תת-סעיף','חברה','מספר חשבון','תיאור חשבון',DATA.dates.current,DATA.dates.compare,'הפרש','שינוי %','מטבע','מקור'];
+  const trs=rows.map(r=>'<tr><td>'+escX(info.row.name||'')+'</td><td>'+escX(r.subsectionName||'')+'</td><td>'+escX(r.subsectionCode||'')+'</td><td>'+escX(r.entity||'')+'</td><td>'+escX(r.account||'')+'</td><td>'+escX(r.desc||'')+'</td><td>'+escX(r.current)+'</td><td>'+escX(r.compare)+'</td><td>'+escX(r.diff)+'</td><td>'+escX(r.pct)+'</td><td>'+escX(unitOf(r.currency))+'</td><td>'+escX(r.sourceType||'')+'</td></tr>').join('');
+  const table='<html><head><meta charset="utf-8"></head><body><table border="1"><thead><tr>'+headers.map(h=>'<th>'+escX(h)+'</th>').join('')+'</tr></thead><tbody>'+trs+'</tbody></table></body></html>';
+  const blob=new Blob(['\ufeff'+table],{type:'application/vnd.ms-excel;charset=utf-8'});
+  try{
+    if(navigator.msSaveOrOpenBlob){
+      navigator.msSaveOrOpenBlob(blob,'סעיף_'+safeName+'.xls');
+      showToast('הסעיף כולו יוצא לאקסל');
+      return;
+    }
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download='סעיף_'+safeName+'.xls';
+    a.style.display='none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{a.remove();URL.revokeObjectURL(url);},1500);
+    showToast('הסעיף כולו יוצא לאקסל');
+  }catch(e){
+    copyText(wholeSectionCopyText(activeSectionId));
+    showToast('ההורדה נחסמה; נתוני הסעיף הועתקו ללוח');
+  }
+}
+
+function totals(rows){ const current = rows.reduce((acc,row)=>acc+(Number(row.current)||0),0); const compare = rows.reduce((acc,row)=>acc+(Number(row.compare)||0),0); const diff = current - compare; const percent = compare === 0 ? (current === 0 ? 0 : 100) : diff / Math.abs(compare) * 100; return {current,compare,diff,pct:percent}; }
+function findRow(id){ for(const page of Object.values(DATA.pages)){ const row = (page.rows || []).find(item => item.id === id); if(row) return row; } return null; }
+applyManualEntriesToData();
+const PNL_MILESTONES = { r236: 'pnl_r236', r270: 'pnl_r270', r289: 'pnl_r289' };
+function pnlItemMilestones(id){ const row=findRow(id),key=String(id||'').replace(/^pnl_/,''); const code=String((row&&row.code)||key).trim().toUpperCase(); if(/^(T|U)\d*$/i.test(code)||/^(T|U)\d+$/.test(key)) return ['r236','r270','r289']; if(/^(V|W)\d*$/i.test(code)||/^(V|W)\d+$/.test(key)) return ['r270','r289']; if(/^(VA|VB|VD|VE)\d*$/i.test(code)||/^(VA|VB|VD|VE)\d*$/i.test(key)) return ['r289']; const page=DATA.pages&&DATA.pages.pnl;if(!page||!row)return []; const parents=[],seen=new Set([row.id]);let frontier=[row.id];while(frontier.length){const next=[];(page.rows||[]).forEach(p=>{if(!p||seen.has(p.id)||!Array.isArray(p.children))return;if(p.children.some(cid=>frontier.includes(cid))){parents.push(p);seen.add(p.id);next.push(p.id);}});frontier=next;} const text=[row,...parents].flatMap(r=>[r&&r.code,r&&r.name]).filter(Boolean).join(' ').toLowerCase(); if(/מימון|finance|מסים|מיסים|tax|חברות מוחזקות|associate|הוצאות אחרות|הכנסות אחרות|other expense|other income/.test(text)) return ['r289']; if(/עלות המכר|עלות המכירות|cost of sales|cogs|מכירות|הכנסות|revenue|sales/.test(text)) return ['r236','r270','r289']; if(/מכירה ושיווק|שיווק|הנהלה וכלליות|הנהלה|כלליות|selling|marketing|general and administrative|administrative|תפעול/.test(text)) return ['r270','r289']; return []; }
+function pnlImpactHtml(id){ if(id.indexOf('pnl_') !== 0) return ''; const milestoneKeys = pnlItemMilestones(id); if(!milestoneKeys.length) return ''; const pnlMap = byId(DATA.pages.pnl); const itemRow = pnlMap[id]; if(!itemRow) return ''; const itemDiff = (Number(itemRow.current)||0) - (Number(itemRow.compare)||0); if(Math.abs(itemDiff) < 0.005) return ''; const profitMultiplier=pnlRevenueSign('current')>0 ? 1 : -1; const lines = milestoneKeys.map(key => { const mRow = pnlMap['pnl_' + key]; if(!mRow) return ''; const label = mRow.name || PNL_MILESTONES[key] || key; const mDiff = (Number(mRow.current)||0) - (Number(mRow.compare)||0); const itemImpact = profitMultiplier * itemDiff; const dir = itemImpact > 0 ? 'עלייה' : itemImpact < 0 ? 'ירידה' : null; if(!dir) return ''; const economicMilestoneDiff=profitMultiplier*mDiff; const share = Math.abs(economicMilestoneDiff) > 0.005 ? Math.round(Math.abs(itemImpact / economicMilestoneDiff) * 1000) / 10 + '%' : ''; return '<div class="impact-line">• סעיף זה גרם ל<b>' + dir + '</b> של כ-<b>' + fmt(Math.abs(itemImpact)) + '</b> ' + safe(defaultDisplayUnit()) + ' ב<b>' + safe(label) + '</b> בהשוואה לתקופה הקודמת' + (share ? ' (כ-' + share + ' מהשינוי הכולל בסעיף זה)' : '') + '.</div>'; }).filter(Boolean); if(!lines.length) return ''; return '<div class="impact-card"><h3>השפעה על רווחיות הדוח</h3>' + lines.join('') + '</div>'; }
+function drillReconHtml(base,rows){ const total=totals(rows); const expectedCurrent=base?Number(base.current)||0:0; const expectedCompare=base?Number(base.compare)||0:0; const diffCurrent=expectedCurrent-total.current; const diffCompare=expectedCompare-total.compare; const tol=0.005; const okCurrent=Math.abs(diffCurrent)<=tol; const okCompare=Math.abs(diffCompare)<=tol; return '<div class="drill-recon">'+
+'<div class="drill-recon-item '+(okCurrent?'ok':'bad')+'"><strong>'+safe(DATA.dates.current)+' — יתרת הסעיף</strong>'+fmt(expectedCurrent)+'</div>'+
+'<div class="drill-recon-item '+(okCurrent?'ok':'bad')+'"><strong>'+safe(DATA.dates.current)+' — סה״כ Drill-down</strong>'+fmt(total.current)+'</div>'+
+'<div class="drill-recon-item '+(okCurrent?'ok':'bad')+'"><strong>'+safe(DATA.dates.current)+' — סטטוס</strong>'+(okCurrent?'✓ תקין':'⚠ הפרש לא מוסבר: '+fmt(diffCurrent))+'</div>'+
+'<div class="drill-recon-item '+(okCompare?'ok':'bad')+'"><strong>'+safe(DATA.dates.compare)+' — יתרת הסעיף</strong>'+fmt(expectedCompare)+'</div>'+
+'<div class="drill-recon-item '+(okCompare?'ok':'bad')+'"><strong>'+safe(DATA.dates.compare)+' — סה״כ Drill-down</strong>'+fmt(total.compare)+'</div>'+
+'<div class="drill-recon-item '+(okCompare?'ok':'bad')+'"><strong>'+safe(DATA.dates.compare)+' — סטטוס</strong>'+(okCompare?'✓ תקין':'⚠ הפרש לא מוסבר: '+fmt(diffCompare))+'</div>'+
+'</div>'; }
+function drillNoteKey(sectionId,row,index){ const identity=[row.account||'',row.code||'',row.desc||'',row.entity||row.company||'',row.sourceType||'',index].join('|'); return 'drill::'+sectionId+'::'+identity; }
+function parseDrillNoteKey(key){ if(!String(key).startsWith('drill::')) return null; const parts=String(key).split('::'); return {sectionId:parts[1]||'',identity:parts.slice(2).join('::')}; }
+function drillNoteContext(key){ const parsed=parseDrillNoteKey(key); if(!parsed) return null; const rows=calcRows(parsed.sectionId); for(let i=0;i<rows.length;i++){ if(drillNoteKey(parsed.sectionId,rows[i],i)===key){ const parent=findRow(parsed.sectionId); return {parent,row:rows[i],index:i}; } } return {parent:findRow(parsed.sectionId),row:null,index:-1}; }
+function manualEvidencePickerHtml(targetKey){ const selected=new Set((evidenceReviewState.manualAssignments&&evidenceReviewState.manualAssignments[targetKey])||[]); const docs=evidenceDocuments(),pickerId='externalEvidence_'+stableEvidenceKeyText(targetKey); const existing=docs.length?docs.map((doc,i)=>{ const key=evidenceDocumentKey(doc,i),legacy=evidenceDocumentLegacyKey(i),checked=selected.has(key)||selected.has(legacy),tag=doc.manualExternal?' — צורף ידנית':''; const remove=doc.manualExternal?' <button type="button" data-remove-external-evidence="'+safe(key)+'" title="הסר את הראיה הידנית מהדשבורד">הסר מהדשבורד</button>':''; return '<label><input type="checkbox" data-manual-evidence-doc="'+safe(key)+'" data-manual-evidence-target="'+safe(targetKey)+'" '+(checked?'checked':'')+'> <span>'+safe((doc.fileName||doc.name||('מסמך '+(i+1)))+tag)+'</span>'+remove+'</label>'; }).join(''):'<div class="hint">אין מסמכי ראיות זמינים במערכת.</div>'; const add='<div class="audit-evidence-item" style="margin-top:4px"><div class="audit-evidence-file">+ הוסף ראיה מהמחשב / מהרשת</div><div class="audit-evidence-meta">בחר קובץ מתיקיית הראיות ברשת. הדשבורד ישמור רק את שם הקובץ וההפניה אליו — לא את תוכן הקובץ.</div><input id="'+safe(pickerId)+'_file" type="file" data-external-evidence-file="'+safe(targetKey)+'" style="margin-top:8px;width:100%"><button type="button" data-external-evidence-add="'+safe(targetKey)+'" style="margin-top:7px">הוסף ושייך לחשבון</button></div>'; return '<div class="manual-evidence-picker">'+existing+add+'</div>'; }
+function toggleManualEvidenceAssignment(targetKey,docKey,checked){ const before=JSON.parse(JSON.stringify(evidenceReviewState.manualAssignments||{})); const docs=evidenceDocuments(); const docIndex=docs.findIndex((d,i)=>evidenceDocumentKey(d,i)===docKey||evidenceDocumentLegacyKey(i)===docKey); const stable=docIndex>=0?evidenceDocumentKey(docs[docIndex],docIndex):docKey,legacy=docIndex>=0?evidenceDocumentLegacyKey(docIndex):''; const current=new Set((evidenceReviewState.manualAssignments[targetKey]||[])); if(legacy) current.delete(legacy); if(checked) current.add(stable); else current.delete(stable); if(current.size) evidenceReviewState.manualAssignments[targetKey]=[...current]; else delete evidenceReviewState.manualAssignments[targetKey]; if(!persistEvidenceReview()){ evidenceReviewState.manualAssignments=before; showToast('לא ניתן לשמור את שיוך הראיה.'); return; } refreshEvidenceViews(); }
+function removeExternalEvidence(docKey){ const docs=evidenceDocuments(); const docIndex=docs.findIndex((d,i)=>evidenceDocumentKey(d,i)===docKey); if(docIndex<0||!docs[docIndex]||!docs[docIndex].manualExternal) return; const doc=docs[docIndex],stable=evidenceDocumentKey(doc,docIndex); const beforeDocs=JSON.parse(JSON.stringify(evidenceReviewState.externalDocuments||[])),beforeAssignments=JSON.parse(JSON.stringify(evidenceReviewState.manualAssignments||{})); evidenceReviewState.externalDocuments=(evidenceReviewState.externalDocuments||[]).filter(d=>d!==doc&&String(d.documentId||'')!==String(doc.documentId||'')); Object.keys(evidenceReviewState.manualAssignments||{}).forEach(targetKey=>{ const kept=(evidenceReviewState.manualAssignments[targetKey]||[]).filter(k=>k!==stable&&k!==docKey); if(kept.length) evidenceReviewState.manualAssignments[targetKey]=kept; else delete evidenceReviewState.manualAssignments[targetKey]; }); if(!persistEvidenceReview()){ evidenceReviewState.externalDocuments=beforeDocs; evidenceReviewState.manualAssignments=beforeAssignments; showToast('לא ניתן להסיר את הראיה מהדשבורד.'); return; } document.querySelectorAll('a.open-evidence-doc[data-static-evidence-key="'+CSS.escape(stable)+'"]').forEach(a=>a.remove()); refreshEvidenceViews(); showToast('הראיה הידנית הוסרה מהדשבורד'); }
+function evidenceNetworkBaseHref(){ const pool=document.getElementById('staticEvidenceLinkPool'); if(pool){ const a=pool.querySelector('a.open-evidence-doc[href]'); const href=String((a&&a.getAttribute('href'))||'').trim(); if(href){ const clean=href.split('#')[0].split('?')[0]; const cut=Math.max(clean.lastIndexOf('/'),clean.lastIndexOf('\\')); if(cut>=0) return clean.slice(0,cut+1); } } const docs=evidenceDocuments().filter(d=>!d.manualExternal); for(const d of docs){ const path=String(d.documentUrl||d.fileUrl||d.filePath||d.relativePath||'').trim(); if(!path) continue; const clean=path.split('#')[0].split('?')[0]; const cut=Math.max(clean.lastIndexOf('/'),clean.lastIndexOf('\\')); if(cut>=0) return clean.slice(0,cut+1); } return ''; }
+function evidenceHrefForFileName(fileName){ const base=evidenceNetworkBaseHref(),name=String(fileName||'').trim(); if(!base||!name) return ''; return base+name; }
+function addExternalEvidenceForTarget(targetKey){ const pickerId='externalEvidence_'+stableEvidenceKeyText(targetKey),fileInput=document.getElementById(pickerId+'_file'); const file=fileInput&&fileInput.files&&fileInput.files[0]; if(!file){ showToast('יש לבחור קובץ ראיית ביקורת'); return; } const fileName=String(file.name||'').trim(); const href=evidenceHrefForFileName(fileName); if(!href){ showToast('לא ניתן לזהות את נתיב תיקיית הראיות הקיים בדשבורד, ולכן הקובץ לא שויך.'); return; } const ext=(fileName.match(/\.([^.]+)$/)||[])[1]||'',beforeDocs=JSON.parse(JSON.stringify(evidenceReviewState.externalDocuments||[])),beforeAssignments=JSON.parse(JSON.stringify(evidenceReviewState.manualAssignments||{})); let doc=(evidenceReviewState.externalDocuments||[]).find(d=>String(d.documentUrl||'')===href); if(!doc){ doc={documentId:'manual_external_'+stableEvidenceKeyText(href+'|'+fileName),fileName,documentUrl:href,documentType:ext?ext.toUpperCase():'',documentDate:'',manualExternal:true,addedAt:new Date().toLocaleString('he-IL'),matches:[]}; evidenceReviewState.externalDocuments.push(doc); } const docs=evidenceDocuments(),idx=docs.indexOf(doc),docKey=evidenceDocumentKey(doc,idx),current=new Set((evidenceReviewState.manualAssignments[targetKey]||[])); current.add(docKey); evidenceReviewState.manualAssignments[targetKey]=[...current]; if(!persistEvidenceReview()){ evidenceReviewState.externalDocuments=beforeDocs; evidenceReviewState.manualAssignments=beforeAssignments; showToast('לא ניתן לשמור את הראיה המקומית בדפדפן.'); return; } refreshEvidenceViews(); showToast('הראיה נוספה ושויכה לחשבון'); }
+function evidenceAssignableTargets(){ const out=[],seen=new Set(); Object.entries(DATA.drilldownData||{}).forEach(([sectionId,rows])=>{ const parent=findRow(sectionId); (rows||[]).forEach(row=>{ const account=normalizeAccount(row.account||row.code); if(!account) return; const key=evidenceTargetKey(sectionId,account,'Drill-down'); if(seen.has(key)) return; seen.add(key); out.push({key,label:[parent&&parent.name,account,row.desc].filter(Boolean).join(' — ')}); }); }); return out.sort((a,b)=>a.label.localeCompare(b.label,'he')); }
+function evidenceCenterManualAssignHtml(){ const targets=evidenceAssignableTargets(); return '<div class="general-evidence-box" id="evidenceCenterManualBox" style="display:none"><h3>שיוך ראיה ידני לחשבון</h3><div class="audit-evidence-meta">בחר חשבון ולאחר מכן סמן מסמך אחד או יותר. ניתן להסיר שיוך בכל עת.</div><div class="evidence-center-filters" style="margin-top:9px"><select id="evidenceCenterManualTarget"><option value="">בחר חשבון / סעיף</option>'+targets.map(t=>'<option value="'+safe(t.key)+'">'+safe(t.label)+'</option>').join('')+'</select></div><div id="evidenceCenterManualDocs" class="hint">בחר חשבון כדי להציג את הראיות הקיימות במערכת.</div></div>'; }
+function renderEvidenceCenterManualDocs(){ const target=document.getElementById('evidenceCenterManualTarget'); const host=document.getElementById('evidenceCenterManualDocs'); if(!target||!host) return; host.innerHTML=target.value?manualEvidencePickerHtml(target.value):'<div class="hint">בחר חשבון כדי להציג את הראיות הקיימות במערכת.</div>'; }
+function drillRowHtml(row,showEntity,sectionId,index){ const noteKey=drillNoteKey(sectionId,row,index); const hasNote=!!String(auditNotes[noteKey]||'').trim(); const items=evidenceForDrillRow(sectionId,row); const targetKey=evidenceTargetKey(sectionId,row.account||row.code,'Drill-down'); const colCount=showEntity?10:9; const parent=findRow(sectionId); const pageKey=String(sectionId||'').startsWith('pnl_')?'pnl':String(sectionId||'').startsWith('cashflow_')?'cashflow':String(sectionId||'').startsWith('ratios_')?'ratios':'balance'; const changeClass=economicChangeClass(pageKey,parent||row,row.current,row.compare); const isOpen=openEvidenceDetailKey===targetKey; const pickerOpen=manualEvidencePickerKey===targetKey; return '<tr>'+(showEntity?'<td data-label="חברה">'+safe(row.entity||row.company||'')+'</td>':'')+'<td data-label="תיאור חשבון">' + safe(row.desc) + (row.manualEntryId?' <span class="evidence-level-badge">הוזן ידנית</span>':'') + '</td><td data-label="קוד חשבון">' + safe(row.manualEntryId?(row.reference||'פקודה ידנית'):(row.account || row.code)) + '</td><td class="num" data-label="' + safe(DATA.dates.current) + '">' + fmt(row.current) + '</td><td class="num" data-label="' + safe(DATA.dates.compare) + '">' + fmt(row.compare) + '</td><td class="num ' + changeClass + '" data-label="הפרש">' + fmt(row.diff) + '</td><td class="num ' + changeClass + '" data-label="שינוי %">' + pctChange(row.current,row.compare) + '</td><td data-label="מטבע">' + safe(unitOf(row.currency)) + '</td><td class="audit-evidence-cell" data-label="ראיות ביקורת">'+evidenceStatusButtonHtml(targetKey,items)+'<button type="button" class="manual-evidence-add" data-manual-evidence-picker="'+safe(targetKey)+'" title="שייך ראיה ידנית">+</button></td><td class="drill-note-cell" data-label="הערה"><button type="button" class="drill-note-toggle '+(hasNote?'has-note':'')+'" data-drill-note-key="'+safe(noteKey)+'" title="'+(hasNote?'ערוך הערה':'הוסף הערה')+'">◢</button></td></tr>'+(items.length?'<tr class="audit-evidence-detail-row" data-evidence-detail-row="'+safe(targetKey)+'" style="display:'+(isOpen?'table-row':'none')+'"><td colspan="'+colCount+'">'+evidenceDetailsHtml(targetKey,items)+'</td></tr>':'')+(pickerOpen?'<tr class="audit-evidence-detail-row"><td colspan="'+colCount+'"><div class="audit-evidence-item"><div class="audit-evidence-file">שיוך ראיה ידני</div><div class="audit-evidence-meta">סמן מסמך אחד או יותר. ניתן לבטל סימון בכל עת.</div>'+manualEvidencePickerHtml(targetKey)+'</div></td></tr>':'')+'<tr class="drill-note-editor-row" data-drill-note-editor="'+safe(noteKey)+'" style="display:none"><td colspan="'+colCount+'"><textarea class="drill-note-editor" data-drill-note-input="'+safe(noteKey)+'" placeholder="הוסף הערה לשורת Drill-down זו...">'+safe(auditNotes[noteKey]||'')+'</textarea></td></tr>'; }
+function generalEvidenceSectionHtml(id){ const items=generalEvidenceForSection(id); if(!items.length) return ''; const grouped={}; items.forEach(e=>{ (grouped[e.targetKey]||(grouped[e.targetKey]=[])).push(e); }); return '<div class="general-evidence-box" id="generalEvidenceHost"><h3>ראיות ביקורת כלליות</h3>'+Object.entries(grouped).map(([key,list])=>{ const first=list[0],label=[first.subSection||first.mainSection||first.code,first.level].filter(Boolean).join(' | '); return '<div class="general-evidence-row"><div><div>'+safe(label||'ראיה כללית')+'</div><div class="audit-evidence-meta">לא שויך לחשבון Drill-down ספציפי</div></div>'+evidenceStatusButtonHtml(key,list)+'</div>'+(openEvidenceDetailKey===key?'<div class="audit-evidence-detail">'+evidenceDetailsHtml(key,list)+'</div>':''); }).join('')+'</div>'; }
+function renderDrilldownRows(id,amountThreshold,pctThreshold,textQuery,sortMode){ const base=findRow(id); const allRows=calcRows(id); const amount=Math.max(0,Number(amountThreshold)||0); const pctMin=Math.max(0,Number(pctThreshold)||0); const q=String(textQuery||'').trim().toLowerCase(); const mode=['desc','asc'].includes(String(sortMode||''))?String(sortMode):'original'; const baseAbs=Math.max(Math.abs(Number(base&&base.current)||0),Math.abs(Number(base&&base.compare)||0),0.000001); const indexed=allRows.map((row,index)=>({row,index})); const filtered=indexed.filter(item=>{ const row=item.row; const amountHit=amount>0 && Math.max(Math.abs(Number(row.current)||0),Math.abs(Number(row.compare)||0))>=amount; const share=Math.max(Math.abs(Number(row.current)||0),Math.abs(Number(row.compare)||0))/baseAbs*100; const pctHit=pctMin>0 && share>=pctMin; const numericHit=(amount===0&&pctMin===0)||amountHit||pctHit; const haystack=[row.desc,row.account,row.code,row.entity,row.company,row.sourceType].join(' ').toLowerCase(); const textHit=!q||haystack.includes(q); return numericHit&&textHit; }); filtered.sort((a,b)=>mode==='desc'?((Number(b.row.current)||0)-(Number(a.row.current)||0)||(a.index-b.index)):mode==='asc'?((Number(a.row.current)||0)-(Number(b.row.current)||0)||(a.index-b.index)):(a.index-b.index)); const trialRows=filtered.filter(item=>item.row.sourceType!=='additional_entry'); const additionalRows=filtered.filter(item=>item.row.sourceType==='additional_entry'); currentDrillViewRows=trialRows.concat(additionalRows).map(item=>item.row); document.getElementById('drillFilterCount').textContent=filtered.length+' מתוך '+allRows.length+' שורות'; const showEntity=filtered.some(item=>(item.row.entity||item.row.company)); const colCount=showEntity?10:9; const additionalHeader=additionalRows.length?'<tr class="additional-entry-header"><td colspan="'+colCount+'">פקודות נוספות</td></tr>':''; const host=document.getElementById('drillTableHost'); if(!filtered.length){ host.innerHTML='<div class="info-card"><h3>אין שורות בסינון שנבחר</h3><p>נסה לשנות את החיפוש או את סף הסכום/האחוז.</p></div>'+generalEvidenceSectionHtml(id); return; } const total=totals(filtered.map(item=>item.row)); host.innerHTML='<table class="detail-table"><thead><tr>'+(showEntity?'<th>חברה</th>':'')+'<th>תיאור חשבון</th><th>קוד חשבון</th><th>'+safe(DATA.dates.current)+'</th><th>'+safe(DATA.dates.compare)+'</th><th>הפרש</th><th>שינוי %</th><th>מטבע</th><th>ראיות ביקורת</th><th>הערה</th></tr></thead><tbody>'+trialRows.map(item=>drillRowHtml(item.row,showEntity,id,item.index)).join('')+additionalHeader+additionalRows.map(item=>drillRowHtml(item.row,showEntity,id,item.index)).join('')+'</tbody><tfoot><tr>'+(showEntity?'<td></td>':'')+'<td>סה״כ מוצג</td><td></td><td class="num">'+fmt(total.current)+'</td><td class="num">'+fmt(total.compare)+'</td><td class="num '+economicChangeClass(String(id||'').startsWith('pnl_')?'pnl':String(id||'').startsWith('cashflow_')?'cashflow':String(id||'').startsWith('ratios_')?'ratios':'balance',base||{},total.current,total.compare)+'">'+fmt(total.diff)+'</td><td class="num '+economicChangeClass(String(id||'').startsWith('pnl_')?'pnl':String(id||'').startsWith('cashflow_')?'cashflow':String(id||'').startsWith('ratios_')?'ratios':'balance',base||{},total.current,total.compare)+'">'+pct(total.pct)+'</td><td>'+safe(defaultDisplayUnit())+'</td><td></td><td></td></tr></tfoot></table>'+generalEvidenceSectionHtml(id); }
+function openDrilldown(id){ modalMode='drilldown'; setModalActionsVisible(true); activeSectionId=id; currentDrillViewRows=[]; const sortSelect=document.getElementById('drillSortSelect'); const sortWrap=document.getElementById('drillSortWrap'); if(sortSelect) sortSelect.value='original'; if(sortWrap) sortWrap.style.display='inline-flex'; const base=findRow(id); const rows=calcRows(id); document.getElementById('modalTitle').textContent=base?'פירוט: '+base.name:'פירוט סעיף'; document.getElementById('modalMeta').textContent=rows.length?'הרכב מאזן בוחן'+(rows.some(r=>r.sourceType==='additional_entry')?' + פקודות נוספות':'')+' | '+rows.length+' שורות':'אין פירוט זמין לסעיף '+((base&&base.name)||id); const body=document.getElementById('modalBody'); if(!rows.length){ body.innerHTML=pnlImpactHtml(id)+'<div class="info-card"><h3>אין פירוט זמין</h3><p>לא נמצא מיפוי מאזן בוחן לסעיף '+safe((base&&base.name)||id)+'.</p></div>'+generalEvidenceSectionHtml(id)+notesSectionHtml(id); document.getElementById('exportModalData').disabled=true; } else { document.getElementById('exportModalData').disabled=false; body.innerHTML=pnlImpactHtml(id)+drillReconHtml(base,rows)+'<div class="drill-filter"><label for="drillTextSearch">חיפוש בפירוט</label><input id="drillTextSearch" type="search" placeholder="שם / חשבון / קוד / חברה"><label for="drillAmountThreshold">הצג שורות מסכום של</label><input id="drillAmountThreshold" type="number" min="0" step="1" value="0"><label for="drillPctThreshold">או מאחוז מתוך הסעיף</label><input class="pct-input" id="drillPctThreshold" type="number" min="0" step="0.1" value="0"><span class="drill-filter-count" id="drillFilterCount"></span></div><div id="drillTableHost"></div>'+notesSectionHtml(id); const refresh=()=>renderDrilldownRows(id,document.getElementById('drillAmountThreshold').value,document.getElementById('drillPctThreshold').value,document.getElementById('drillTextSearch').value,document.getElementById('drillSortSelect').value); refresh(); document.getElementById('drillTextSearch').addEventListener('input',refresh); document.getElementById('drillAmountThreshold').addEventListener('input',refresh); document.getElementById('drillPctThreshold').addEventListener('input',refresh); document.getElementById('drillSortSelect').addEventListener('change',refresh); } document.getElementById('modalBackdrop').classList.add('open'); document.getElementById('closeModal').focus(); const wholeInfo=firstChildParentInfo(id); document.getElementById('copyWholeSection').style.display=wholeInfo?'':'none'; document.getElementById('exportWholeSection').style.display=wholeInfo?'':'none'; }
+function kpiComponentRows(items, unit){ return (items||[]).map(item => { const op=item.operator ? safe(item.operator) + ' ' : ''; const isResult=item.operator==='=' || item.isResult; return '<div class="kpi-calc-row ' + (isResult?'result':'') + '"><div class="calc-label">' + op + safe(item.label||'') + '</div><div class="calc-value">' + fmt(item.value, unit) + '</div></div>'; }).join(''); }
+function openKpiDetail(id){ modalMode='kpi'; setModalActionsVisible(false); const details=(DATA.kpiDetails||{})[id]||{}; const row=((DATA.pages.ratios||{}).rows||[]).find(r=>r.id===id); const fallbackNames={ratios_R01:'רווח גולמי',ratios_R03:'EBITDA',ratios_R05:'הון חוזר',ratios_R06:'רווח תפעולי',ratios_R07:'רווח נקי'}; const title=(id==='ratios_R01'||id==='ratios_R06'||id==='ratios_R07')?kpiProfitText(id,false):(details.title||fallbackNames[id]||(row&&row.name)||'KPI'); const unit=(row&&row.unit)||details.unit||defaultDisplayUnit(); document.getElementById('modalTitle').textContent='חישוב KPI: '+title; document.getElementById('modalMeta').textContent='פירוט הנוסחה והנתונים ששימשו לחישוב'; let body='<div class="kpi-calc"><div class="kpi-formula"><h3>נוסחה</h3><p>'+safe(details.formula||'לא סופק פירוט חישוב ב-JSON.')+'</p></div>'; if(details.current && details.current.length){ body += '<div class="kpi-period"><h3>'+safe(DATA.dates.current)+'</h3>'+kpiComponentRows(details.current,unit)+'</div>'; } if(details.compare && details.compare.length){ body += '<div class="kpi-period"><h3>'+safe(DATA.dates.compare)+'</h3>'+kpiComponentRows(details.compare,unit)+'</div>'; } if((!details.current||!details.current.length) && row){ body += '<div class="kpi-period"><h3>'+safe(DATA.dates.current)+'</h3><div class="kpi-calc-row result"><div class="calc-label">'+safe(title)+'</div><div class="calc-value">'+fmt(row.current,unit)+'</div></div></div>'; } body += '</div>'; document.getElementById('modalBody').innerHTML=body; document.getElementById('modalBackdrop').classList.add('open'); document.getElementById('closeModal').focus(); }
+
+function significantChanges(){ const leaves = allLeafRows().filter(item => !(Number(item.row.current)===0 && Number(item.row.compare)===0)); const withV = leaves.map(item => Object.assign({}, item, {v: variance(item.row)})); const byDiff = withV.slice().sort((a,b) => Math.abs(b.v.diff)-Math.abs(a.v.diff)); const top9 = byDiff.slice(0,9); const top9Ids = new Set(top9.map(i => i.row.id)); const remaining = byDiff.slice(9); let tenth = remaining[0] || null; const pctCandidates = remaining.filter(i => isFinite(i.v.pct) && Math.abs(i.v.diff) > 0.01).sort((a,b) => Math.abs(b.v.pct)-Math.abs(a.v.pct)); const pctOutlier = pctCandidates[0]; if(pctOutlier && Math.abs(pctOutlier.v.pct) >= 75 && !top9Ids.has(pctOutlier.row.id)){ tenth = pctOutlier; } const final = tenth ? top9.concat([tenth]) : top9; final.sort((a,b) => Math.abs(b.v.diff)-Math.abs(a.v.diff)); return final; }
+function openExecReview(){ modalMode='exec'; setModalActionsVisible(false); document.getElementById('modalTitle').textContent='סקירת מנהלים'; document.getElementById('modalMeta').textContent='10 השינויים המשמעותיים ביותר בין ' + safe(DATA.dates.compare) + ' ל-' + safe(DATA.dates.current); const items=significantChanges(); document.getElementById('modalBody').innerHTML = !items.length ? '<div class="info-card"><h3>אין נתונים</h3></div>' : '<div class="exec-list">' + items.map((item,idx) => '<div class="exec-item clickable" tabindex="0" data-row-id="' + item.row.id + '"><div class="exec-rank">' + (idx+1) + '</div><div class="exec-info"><div class="exec-name">' + safe(item.row.name) + '</div><div class="exec-page">' + safe(PAGE_LABELS[item.page]) + ' | ' + safe(DATA.dates.current) + ': ' + fmt(item.row.current, item.row.unit) + ' | ' + safe(DATA.dates.compare) + ': ' + fmt(item.row.compare, item.row.unit) + '</div></div><div class="exec-nums"><div class="exec-diff ' + economicChangeClass(item.page,item.row,item.row.current,item.row.compare) + '">' + fmt(item.v.diff, item.row.unit) + '</div><div class="exec-pct ' + economicChangeClass(item.page,item.row,item.row.current,item.row.compare) + '">' + pctChange(item.row.current,item.row.compare) + trendArrow(economicTrendValue(item.page,item.row,item.row.current,item.row.compare)) + '</div></div></div>').join('') + '</div>'; document.getElementById('modalBackdrop').classList.add('open'); }
+function fxAuditOf(row){ if(row&&row.fxAudit&&row.fxAudit.otherCurrency) return row.fxAudit; const list=Array.isArray(row&&row.foreignBalances)?row.foreignBalances:[]; if(list.length){ const x=list[0]||{}; const metaCurrency=String((DATA.meta||{}).currency||'').toUpperCase(); const c=String(x.currency||'').toUpperCase(); if(c==='ILS'){ return {otherCurrency:metaCurrency||'OTHER',otherCurrent:Number(row.current),otherCompare:Number(row.compare),ilsCurrent:x.current,ilsCompare:x.compare,rateCurrent:x.rateCurrent,rateCompare:x.rateCompare}; } return {otherCurrency:c||'OTHER',otherCurrent:x.current,otherCompare:x.compare,ilsCurrent:x.baseCurrent,ilsCompare:x.baseCompare,rateCurrent:x.rateCurrent,rateCompare:x.rateCompare}; } return null; }
+function foreignBalancesOf(row){ const a=fxAuditOf(row); if(!a) return []; return [{currency:a.otherCurrency,current:a.otherCurrent,compare:a.otherCompare,baseCurrent:a.ilsCurrent,baseCompare:a.ilsCompare,rateCurrent:a.rateCurrent,rateCompare:a.rateCompare}]; }
+function unchangedForeignBalance(row){ const a=fxAuditOf(row); if(!a) return null; const otherC=Number(a.otherCurrent),otherP=Number(a.otherCompare),ilsC=Number(a.ilsCurrent),ilsP=Number(a.ilsCompare); if(Number.isFinite(otherC)&&Number.isFinite(otherP)&&otherC!==0&&otherC===otherP) return {currency:String(a.otherCurrency||'מטבע נוסף'),current:otherC,compare:otherP,baseCurrent:ilsC}; if(Number.isFinite(ilsC)&&Number.isFinite(ilsP)&&ilsC!==0&&ilsC===ilsP) return {currency:'ILS',current:ilsC,compare:ilsP,baseCurrent:ilsC}; return null; }
+function sortUtilityItems(items,sortMode,valueGetter){
+  const mode=String(sortMode||'original');
+  const indexed=(items||[]).map((item,index)=>({item,index}));
+  if(mode==='desc'||mode==='asc'){
+    indexed.sort((a,b)=>{
+      const av=Number(valueGetter(a.item))||0,bv=Number(valueGetter(b.item))||0;
+      const diff=mode==='desc'?(bv-av):(av-bv);
+      return diff||a.index-b.index;
+    });
+  }
+  return indexed.map(x=>x.item);
+}
+function utilityTableMatrix(hostId){
+  const host=document.getElementById(hostId);
+  const table=host&&host.querySelector('table');
+  if(!table) return [];
+  const rows=[];
+  const head=Array.from(table.querySelectorAll('thead th')).map(th=>th.innerText.trim());
+  if(head.length) rows.push(head);
+  table.querySelectorAll('tbody tr').forEach(tr=>{
+    if(tr.hidden||tr.classList.contains('exc-audit-row')) return;
+    const cells=Array.from(tr.querySelectorAll(':scope > td')).map(td=>td.innerText.replace(/\s+/g,' ').trim());
+    if(cells.length) rows.push(cells);
+  });
+  return rows;
+}
+function copyUtilityTable(hostId){
+  const rows=utilityTableMatrix(hostId);
+  if(rows.length<2){ showToast('אין נתונים להעתקה'); return; }
+  copyText(rows.map(row=>row.join('\t')).join('\n'));
+}
+function exportUtilityTable(hostId,title){
+  const rows=utilityTableMatrix(hostId);
+  if(rows.length<2){ showToast('הייצוא נכשל — לא נמצאו נתונים'); return; }
+  const htmlRows=rows.map((row,index)=>'<tr>'+row.map(cell=>(index===0?'<th>':'<td>')+safe(cell)+(index===0?'</th>':'</td>')).join('')+'</tr>').join('');
+  const table='<html dir="rtl"><head><meta charset="utf-8"></head><body><table border="1">'+htmlRows+'</table></body></html>';
+  const safeName=String(title||'נתונים').replace(/[\\/:*?"<>|\s]+/g,'_');
+  const filename=safeName+'_'+new Date().getFullYear()+'.xls';
+  const blob=new Blob(['\ufeff'+table],{type:'application/vnd.ms-excel;charset=utf-8'});
+  try{
+    if(navigator.msSaveOrOpenBlob){ navigator.msSaveOrOpenBlob(blob,filename); showToast('הקובץ נוצר להורדה'); return; }
+    const url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url;a.download=filename;a.style.display='none';document.body.appendChild(a);a.click();
+    setTimeout(()=>{a.remove();URL.revokeObjectURL(url);},1500);
+    showToast('ניסיון הורדה בוצע');
+  }catch(e){ showToast('הדפדפן חסם את הייצוא'); }
+}
+function utilityActionsHtml(prefix){
+  return '<label for="'+prefix+'Sort">מיון</label><select id="'+prefix+'Sort" class="select-like"><option value="original">סדר מקורי</option><option value="desc">מסכום גבוה לסכום נמוך</option><option value="asc">מסכום נמוך לסכום גבוה</option></select><button type="button" id="'+prefix+'Copy">העתק נתונים</button><button type="button" class="export-excel" id="'+prefix+'Export">ייצוא לאקסל</button>';
+}
+function unchangedItems(threshold){ const t=Math.max(0,Number(threshold)||0); const items=[]; allLeafRows().forEach(item => { const c=Number(item.row.current)||0; const p=Number(item.row.compare)||0; if(c===p && c!==0 && Math.abs(c)>=t){ items.push({kind:'section',page:item.page,parent:'',name:item.row.name,account:item.row.code||'',current:c,compare:p,rowId:item.row.id,reason:'מטבע הדוח ללא שינוי',thresholdValue:Math.abs(c)}); } }); Object.entries(DATA.drilldownData||{}).forEach(([rowId,rows]) => { const parent=findRow(rowId); (rows||[]).forEach(row => { const c=Number(row.current)||0; const p=Number(row.compare)||0; const fx=unchangedForeignBalance(row); const baseUnchanged=c===p && c!==0; let qualifies=false, reason='', thresholdValue=0; if(baseUnchanged){ qualifies=true; reason='מטבע הדוח ללא שינוי'; thresholdValue=Math.abs(c); } if(fx){ const fxValue=Math.abs(Number(fx.current)||0); if(!qualifies || fxValue>=thresholdValue){ qualifies=true; reason=String(fx.currency)+' ללא שינוי: '+fmt(fx.current)+' → '+fmt(fx.compare); thresholdValue=fxValue; } } if(qualifies && thresholdValue>=t){ items.push({kind:'drill',page:rowId.indexOf('pnl_')===0?'pnl':rowId.indexOf('cashflow_')===0?'cashflow':rowId.indexOf('ratios_')===0?'ratios':'balance',parent:parent?parent.name:rowId,name:row.desc||'',account:row.account||row.code||'',current:c,compare:p,rowId:rowId,sourceType:row.sourceType||'trial_balance',entity:row.entity||row.company||'',reason,thresholdValue}); } }); }); items.sort((a,b)=>(b.thresholdValue||0)-(a.thresholdValue||0)); return items; }
+function renderUnchangedList(threshold,textQuery,sortMode){ const q=String(textQuery||'').trim().toLowerCase(); const allItems=unchangedItems(threshold); const filtered=q?allItems.filter(item=>[item.parent,item.name,item.account,item.entity,item.reason,PAGE_LABELS[item.page]||item.page,item.sourceType].join(' ').toLowerCase().includes(q)):allItems; const items=sortUtilityItems(filtered,sortMode,item=>item.current); document.getElementById('unchangedCount').textContent=items.length+' מתוך '+allItems.length+' יתרות'; const body=document.getElementById('unchangedTableHost'); body.innerHTML=!items.length?'<div class="info-card"><h3>לא נמצאו יתרות ללא שינוי</h3><p>לא נמצאו יתרות ללא שינוי מעל הסכום שנבחר.</p></div>':'<table class="detail-table"><thead><tr><th>מקור</th><th>סעיף</th><th>חשבון / פירוט</th><th>קוד חשבון</th><th>סיבת הכללה</th><th>'+safe(DATA.dates.current)+'</th><th>'+safe(DATA.dates.compare)+'</th></tr></thead><tbody>'+items.map(item=>'<tr class="'+(item.kind==='section'?'clickable':'')+'" '+(item.kind==='section'?'data-row-id="'+safe(item.rowId)+'"':'')+'><td data-label="מקור">'+safe(item.kind==='section'?PAGE_LABELS[item.page]:(item.sourceType==='additional_entry'?'פקודות נוספות':'Drill-down'))+'</td><td data-label="סעיף">'+safe(item.kind==='section'?item.name:item.parent)+'</td><td data-label="חשבון / פירוט">'+safe(item.kind==='section'?'':item.name+(item.entity?' | '+item.entity:''))+'</td><td data-label="קוד חשבון">'+safe(item.account)+'</td><td data-label="סיבת הכללה">'+safe(item.reason||'')+'</td><td class="num" data-label="'+safe(DATA.dates.current)+'">'+fmt(item.current)+'</td><td class="num" data-label="'+safe(DATA.dates.compare)+'">'+fmt(item.compare)+'</td></tr>').join('')+'</tbody></table>'; }
+function openUnchanged(){ modalMode='unchanged'; setModalActionsVisible(false); document.getElementById('modalTitle').textContent='יתרות ללא שינוי'; document.getElementById('modalMeta').textContent='מספיק שמטבע אחד שמופיע במקור נשאר ללא שינוי בין התקופות'; document.getElementById('modalBody').innerHTML='<div class="unchanged-filter"><label for="unchangedSearch">חיפוש</label><input id="unchangedSearch" type="search" placeholder="שם / חשבון / קוד / סעיף"><label for="unchangedThreshold">הצג יתרות מסכום של</label><input id="unchangedThreshold" type="number" min="0" step="1" value="0">'+utilityActionsHtml('unchanged')+'<span class="unchanged-count" id="unchangedCount"></span></div><div id="unchangedTableHost"></div>'; const refresh=()=>renderUnchangedList(document.getElementById('unchangedThreshold').value,document.getElementById('unchangedSearch').value,document.getElementById('unchangedSort').value); refresh(); document.getElementById('unchangedThreshold').addEventListener('input',refresh); document.getElementById('unchangedSearch').addEventListener('input',refresh); document.getElementById('unchangedSort').addEventListener('change',refresh); document.getElementById('unchangedCopy').addEventListener('click',()=>copyUtilityTable('unchangedTableHost')); document.getElementById('unchangedExport').addEventListener('click',()=>exportUtilityTable('unchangedTableHost','יתרות_ללא_שינוי')); document.getElementById('modalBackdrop').classList.add('open'); }
+function fxCheckRows(){ const out=[]; Object.entries(DATA.drilldownData||{}).forEach(([rowId,rows])=>{ const parent=findRow(rowId); (rows||[]).forEach(row=>{ const a=fxAuditOf(row); if(!a) return; const otherCurrent=Number(a.otherCurrent); const ilsCurrent=Number(a.ilsCurrent); if(!Number.isFinite(otherCurrent)||otherCurrent===0||!Number.isFinite(ilsCurrent)) return; const explicitRate=Number(a.rateCurrent); const rate=(Number.isFinite(explicitRate)&&explicitRate>0)?Math.abs(explicitRate):(Math.abs(ilsCurrent)/Math.abs(otherCurrent)); if(!Number.isFinite(rate)||rate<=0) return; out.push({rowId,parent:parent?parent.name:rowId,entity:row.entity||row.company||'',desc:row.desc||'',account:row.account||row.code||'',currency:String(a.otherCurrency||''),foreignCurrent:otherCurrent,baseCurrent:ilsCurrent,rate}); }); }); return out; }
+function renderFxChecks(minVal,maxVal,sortMode){ let min=Number(minVal),max=Number(maxVal); const minOk=Number.isFinite(min),maxOk=Number.isFinite(max); if(!minOk&&!maxOk){ min=0;max=Infinity; } else if(minOk&&!maxOk){ max=min; } else if(!minOk&&maxOk){ min=max; } if(min>max){ const t=min;min=max;max=t; } const all=fxCheckRows(); const original=all.filter(x=>x.rate>=min&&x.rate<=max).sort((a,b)=>a.rate-b.rate); const items=sortUtilityItems(original,sortMode,item=>item.baseCurrent); document.getElementById('fxCount').textContent=items.length+' מתוך '+all.length+' שורות'; const host=document.getElementById('fxTableHost'); if(!all.length){ host.innerHTML='<div class="info-card"><h3>לא נמצאו נתוני מט"ח לבדיקה</h3><p>הבדיקה זמינה רק כאשר מאזן הבוחן כולל לאותו חשבון גם יתרה בש״ח וגם יתרה מפורשת במטבע נוסף.</p></div>'; return; } if(!items.length){ host.innerHTML='<div class="info-card"><h3>אין תוצאות בטווח שנבחר</h3><p>שנה את טווח השערים כדי לעדכן את התוצאות.</p></div>'; return; } host.innerHTML='<table class="detail-table"><thead><tr><th>סעיף</th><th>חברה</th><th>חשבון / תיאור</th><th>מטבע נוסף</th><th>יתרה במטבע נוסף</th><th>יתרה בש״ח</th><th>שער</th></tr></thead><tbody>'+items.map(x=>'<tr><td>'+safe(x.parent)+'</td><td>'+safe(x.entity)+'</td><td>'+safe((x.account?x.account+' — ':'')+x.desc)+'</td><td>'+safe(x.currency)+'</td><td class="num">'+fmt(x.foreignCurrent)+'</td><td class="num">'+fmt(x.baseCurrent)+'</td><td class="num">'+x.rate.toFixed(4)+'</td></tr>').join('')+'</tbody></table>'; }
+function openFxChecks(){ modalMode='fx'; setModalActionsVisible(false); document.getElementById('modalTitle').textContent='בדיקות מט"ח'; document.getElementById('modalMeta').textContent='תקופה נוכחית בלבד | מוצגות רק שורות Drill-down שבהן קיימים ש״ח + מטבע נוסף והשער נמצא בטווח'; document.getElementById('modalBody').innerHTML='<div class="fx-filter"><label for="fxMin">שער מ־</label><input id="fxMin" type="number" min="0" step="0.0001" placeholder="לדוגמה 3.5"><label for="fxMax">עד</label><input id="fxMax" type="number" min="0" step="0.0001" placeholder="לדוגמה 4.5">'+utilityActionsHtml('fx')+'<span class="fx-count" id="fxCount"></span></div><div id="fxTableHost"></div>'; const refresh=()=>renderFxChecks(document.getElementById('fxMin').value,document.getElementById('fxMax').value,document.getElementById('fxSort').value); refresh(); document.getElementById('fxMin').addEventListener('input',refresh); document.getElementById('fxMax').addEventListener('input',refresh); document.getElementById('fxSort').addEventListener('change',refresh); document.getElementById('fxCopy').addEventListener('click',()=>copyUtilityTable('fxTableHost')); document.getElementById('fxExport').addEventListener('click',()=>exportUtilityTable('fxTableHost','בדיקות_מטח')); document.getElementById('modalBackdrop').classList.add('open'); }
+function saveDashboardWithNotes(){ try{ const dataCopy=JSON.parse(JSON.stringify(BASE_DATA_FOR_MANUAL)); dataCopy.auditNotes=JSON.parse(JSON.stringify(auditNotes)); dataCopy.auditEvidenceReview=JSON.parse(JSON.stringify(evidenceReviewState)); dataCopy.manualAdditionalEntries=JSON.parse(JSON.stringify(manualEntries)); const currentHtml=document.documentElement.outerHTML; const dataRe=/(<script[^>]*\bid=["']dashboard-data["'][^>]*>)([\s\S]*?)(<\/script>)/i; if(!dataRe.test(currentHtml)){ showToast('לא ניתן לשמור — בלוק הנתונים לא נמצא'); return; } const safeJson=JSON.stringify(dataCopy).replace(/</g,'\\u003c'); const output='<!DOCTYPE html>\n'+currentHtml.replace(dataRe,(m,open,body,close)=>open+safeJson+close); const blob=new Blob([output],{type:'text/html;charset=utf-8'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); const company=String((DATA.meta&&DATA.meta.companyName)||'company').replace(/[^\p{L}\p{N}]+/gu,'_').replace(/^_+|_+$/g,'')||'company'; a.href=url; a.download='dashboard_'+company+'_עם_הערות.html'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1500); showToast('נשמר עותק של הדשבורד עם ההערות'); }catch(e){ showToast('שמירת הדשבורד עם ההערות נכשלה'); } }
+function sideLabel(side){ const s=String(side||'').trim().toLowerCase(); if(['debit','חובה','ח'].includes(s)) return 'ח'; if(['credit','זכות','ז'].includes(s)) return 'ז'; return '?'; }
+function currentAdditionalEntries(){ const out=[]; Object.entries(DATA.drilldownData||{}).forEach(([rowId,rows])=>{ const parent=findRow(rowId); (rows||[]).forEach(row=>{ if(String(row.sourceType||'')!=='additional_entry'||row.manualEntryId) return; const current=Number(row.current)||0; if(current===0) return; const counterparties=Array.isArray(row.counterparties)?row.counterparties:[]; out.push({kind:'source',rowId,parent:parent?parent.name:rowId,row,counterparties}); }); }); (manualEntries||[]).forEach(entry=>{ const legs=Array.isArray(entry.legs)?entry.legs:[],debit=legs.find(x=>x.side==='debit'),credit=legs.find(x=>x.side==='credit'); const debitRow=debit&&findRow(debit.sectionId),creditRow=credit&&findRow(credit.sectionId); const amount=Math.max(0,...legs.map(x=>Math.abs(Number(x.delta)||0))); if(!amount) return; const debitName=(debitRow&&(debitRow.name||debitRow.code))||(debit&&debit.sectionId)||'חובה',creditName=(creditRow&&(creditRow.name||creditRow.code))||(credit&&credit.sectionId)||'זכות'; const counterparties=[{name:debitName,account:(debitRow&&debitRow.code)||'',amount,side:'debit'},{name:creditName,account:(creditRow&&creditRow.code)||'',amount,side:'credit'}]; const applicationIssue=manualEntryApplicationIssue(entry); out.push({kind:'manual',rowId:'',parent:debitName+' ↔ '+creditName,row:{desc:entry.description||'פקודה ידנית',reference:entry.reference||'',account:'MANUAL-'+String(entry.id||''),code:'MANUAL-'+String(entry.id||''),current:amount,sourceType:'additional_entry',manualEntryId:entry.id},counterparties,manualEntry:entry,applicationIssue}); }); return out; }
+function filteredAdditionalEntries(query,viewMode){ const q=String(query||'').trim().toLowerCase(); let items=currentAdditionalEntries(); if(viewMode==='manual') items=items.filter(item=>item.kind==='manual'); if(!q) return items; return items.filter(item=>{ const r=item.row; const cp=(item.counterparties||[]).map(x=>[x.desc,x.name,x.account,x.code,x.amount,x.side,sideLabel(x.side)].join(' ')).join(' '); const hay=[item.parent,r.desc,r.reference,r.account,r.code,r.current,r.side,sideLabel(r.side),cp].join(' ').toLowerCase(); return hay.includes(q); }); }
+function renderAdditionalEntriesCenter(query,sortMode,viewMode){ const all=currentAdditionalEntries(); const filtered=filteredAdditionalEntries(query,viewMode); const items=sortUtilityItems(filtered,sortMode,item=>item.row.current); const count=document.getElementById('additionalEntriesCount'); if(count) count.textContent=items.length+' מתוך '+all.length+' פקודות'; const host=document.getElementById('additionalEntriesTableHost'); if(!host) return; const emptyText=viewMode==='manual'?'לא נמצאו פקודות שהוזנו ידנית.':'לא נמצאו פקודות נוספות של התקופה הנוכחית שתואמות לחיפוש.'; host.innerHTML=!items.length?'<div class="info-card"><h3>לא נמצאו פקודות</h3><p>'+emptyText+'</p></div>':'<table class="detail-table"><thead><tr><th>סעיף</th><th>פקודה נוספת</th><th>חשבון</th><th>'+safe(DATA.dates.current)+'</th><th>מול מה נרשם</th><th>סטטוס</th></tr></thead><tbody>'+items.map(item=>{ const r=item.row,cps=item.counterparties; if(item.kind==='manual'){ const debit=cps.find(x=>x.side==='debit'),credit=cps.find(x=>x.side==='credit'); const cp=[debit?('חובה: '+[debit.name,debit.account].filter(Boolean).join(' | ')):'',credit?('זכות: '+[credit.name,credit.account].filter(Boolean).join(' | ')):''].filter(Boolean).map(safe).join('<br>'); const blocked=!!item.applicationIssue,badge=blocked?'לא יושמה':'הוזן ידנית',status=blocked?'לא יושמה — מיפוי לא תקין':'הוזן ידנית'; return '<tr><td>'+safe(item.parent)+'</td><td>'+safe(r.desc||'פקודה ידנית')+' <span class="evidence-level-badge">'+safe(badge)+'</span></td><td>'+safe(r.reference||'פקודה ידנית')+'</td><td class="num">'+fmt(Number(r.current)||0)+'</td><td>'+cp+'</td><td>'+safe(status)+' <button type="button" data-remove-manual-entry="'+safe(r.manualEntryId)+'">הסר</button></td></tr>'; } const currentSide=sideLabel(r.side); const cp=cps.length?cps.map(x=>{ const amount=Number.isFinite(Number(x.amount))?fmt(Number(x.amount))+' '+sideLabel(x.side):''; return safe([x.desc||x.name||'',x.account||x.code||'',amount].filter(Boolean).join(' | ')); }).join('<br>'):'צד נגדי לא זוהה'; const status=cps.length?(r.counterpartyStatus==='unbalanced'?'זוהה — דורש בדיקת איזון':'זוהה'):'לא זוהה'; return '<tr><td>'+safe(item.parent)+'</td><td>'+safe(r.desc||r.reference||r.code||'פקודה נוספת')+'</td><td>'+safe(r.account||r.code||'')+'</td><td class="num">'+fmt(Number(r.current)||0)+' '+safe(currentSide)+'</td><td>'+cp+'</td><td>'+safe(status)+'</td></tr>'; }).join('')+'</tbody></table>'; host.querySelectorAll('[data-remove-manual-entry]').forEach(btn=>btn.addEventListener('click',()=>removeManualEntry(btn.dataset.removeManualEntry))); }
+function manualEntryFormHtml(){ const options=adjustmentTargetOptions().map(x=>'<option value="'+safe(x.row.id)+'">'+safe((PAGE_LABELS[x.pageKey]||x.pageKey)+' — '+(x.row.name||x.row.code||x.row.id))+'</option>').join(''); return '<div class="manual-entry-form"><label>סעיף חובה<select id="manualDebitSection"><option value="">בחר סעיף</option>'+options+'</select></label><label>סעיף זכות<select id="manualCreditSection"><option value="">בחר סעיף</option>'+options+'</select></label><label>סכום<input id="manualEntryAmount" type="number" min="0" step="0.01" placeholder="0"></label><label>תיאור<input id="manualEntryDescription" type="text" placeholder="תיאור הפקודה"></label><label>אסמכתא<input id="manualEntryReference" type="text" placeholder="אופציונלי"></label><label>סיווג תזרים<select id="manualCashflowClassification"><option value="">לא סווג</option><option value="operating">פעילות שוטפת</option><option value="investing">פעילות השקעה</option><option value="financing">פעילות מימון</option><option value="not_relevant">לא רלוונטי (רק אם אין השפעה על מזומן)</option></select></label><div style="align-self:end"><button type="button" id="manualEntryAdd">+ הוסף פקודה</button></div></div>'; }
+function addManualEntryFromForm(){ const debit=document.getElementById('manualDebitSection').value,credit=document.getElementById('manualCreditSection').value,amount=Math.abs(Number(document.getElementById('manualEntryAmount').value)||0),description=String(document.getElementById('manualEntryDescription').value||'').trim(),reference=String(document.getElementById('manualEntryReference').value||'').trim(),cashflowClassification=String((document.getElementById('manualCashflowClassification')||{}).value||''); if(!debit||!credit||debit===credit||!amount||!description){ showToast('יש לבחור שני סעיפים שונים ולהזין סכום ותיאור'); return; } for(const sectionId of [debit,credit]){ if(String(sectionId).startsWith('pnl_')&&!pnlItemMilestones(sectionId).length){ showToast('לא ניתן לקבוע באופן אמין כיצד סעיף רווח והפסד זה זורם לרווחים ול-KPI. הפקודה לא נשמרה.'); return; } } const debitDelta=manualPostingDelta(debit,'debit',amount),creditDelta=manualPostingDelta(credit,'credit',amount); if(debitDelta===null||creditDelta===null){ showToast('לא ניתן לקבוע באופן אמין את אופי אחד הסעיפים. הפקודה לא נשמרה.'); return; } const entry={id:'manual_'+Date.now(),description,reference,cashflowClassification,createdAt:new Date().toLocaleString('he-IL'),enteredManually:true,legs:[{sectionId:debit,delta:debitDelta,side:'debit'},{sectionId:credit,delta:creditDelta,side:'credit'}]}; if(cashflowClassification==='not_relevant'&&Math.abs(manualEntryCashImpact(entry))>0.0000001){ showToast('הפקודה משפיעה על מזומן ולכן יש לסווג אותה לשוטפת / השקעה / מימון'); return; } manualEntries.push(entry); if(!persistManualEntries()){ manualEntries.pop(); showToast('לא ניתן לשמור את הפקודה גם באופן זמני.'); return; } showToast(NOTES_STORAGE_AVAILABLE?'הפקודה נוספה. הדשבורד נטען מחדש כדי להחיל את ההתאמה':'הפקודה נוספה זמנית. לשמירה קבועה יש לשמור עותק מעודכן של הדשבורד.'); location.reload(); }
+function removeManualEntry(id){ const entry=(manualEntries||[]).find(x=>x.id===id); if(!entry) return; const beforeEntries=JSON.parse(JSON.stringify(manualEntries)),beforeNotes=JSON.parse(JSON.stringify(auditNotes)),beforeEvidence=JSON.parse(JSON.stringify(evidenceReviewState)); const manualCode='MANUAL-'+String(id),targetKeys=new Set((entry.legs||[]).map(leg=>evidenceTargetKey(leg.sectionId,manualCode,'Drill-down'))); manualEntries=manualEntries.filter(x=>x.id!==id); Object.keys(auditNotes).forEach(key=>{ if(String(key).startsWith('drill::')&&String(key).includes(manualCode)) delete auditNotes[key]; }); targetKeys.forEach(key=>{ delete evidenceReviewState.manualAssignments[key]; delete evidenceReviewState.manualStatus[key]; }); evidenceReviewState.history=(evidenceReviewState.history||[]).filter(h=>!targetKeys.has(h&&h.targetKey)); if(targetKeys.has(openEvidenceDetailKey)) openEvidenceDetailKey=null; if(targetKeys.has(manualEvidencePickerKey)) manualEvidencePickerKey=null; const okManual=persistManualEntries(),okNotes=NOTES_STORAGE_AVAILABLE?persistAuditNotes():true,okEvidence=NOTES_STORAGE_AVAILABLE?persistEvidenceReview():true; if(!(okManual&&okNotes&&okEvidence)){ manualEntries=beforeEntries; Object.keys(auditNotes).forEach(k=>delete auditNotes[k]); Object.assign(auditNotes,beforeNotes); Object.keys(evidenceReviewState).forEach(k=>delete evidenceReviewState[k]); Object.assign(evidenceReviewState,beforeEvidence); try{ persistManualEntries(); if(NOTES_STORAGE_AVAILABLE){ persistAuditNotes(); persistEvidenceReview(); } }catch(e){} showToast('לא ניתן להסיר את הפקודה גם באופן זמני.'); return; } showToast(NOTES_STORAGE_AVAILABLE?'הפקודה והשיוכים שלה הוסרו. הדשבורד נטען מחדש':'הפקודה הוסרה מהעבודה הזמנית. הדשבורד נטען מחדש'); location.reload(); }
+function openAdditionalEntriesCenter(){ modalMode='additionalEntriesCenter'; setModalActionsVisible(false); const total=currentAdditionalEntries().length,storageWarning=!NOTES_STORAGE_AVAILABLE?'<div class="issue-item warning" style="margin-bottom:12px"><div class="issue-msg">שמירת הדפדפן חסומה במיקום הרשת. פקודות ידניות יישמרו זמנית בכרטיסייה זו; לשמירה קבועה השתמש בכפתור „שמור דשבורד עם הערות”.</div></div>':''; document.getElementById('modalTitle').textContent='פקודות נוספות'; document.getElementById('modalMeta').textContent='תקופה נוכחית בלבד | פקודות מקור + התאמות ידניות שאינן משנות את נתוני המקור'; document.getElementById('modalBody').innerHTML=storageWarning+'<div style="margin-bottom:12px"><button type="button" id="manualEntryToggle">הוספת פקודה</button></div><div id="manualEntryFormWrap" style="display:none">'+manualEntryFormHtml()+'</div><div class="drill-filter"><label for="additionalEntriesSearch">חיפוש</label><input id="additionalEntriesSearch" type="search" placeholder="לדוגמה: לקוחות"><label for="additionalEntriesView">תצוגה</label><select id="additionalEntriesView" class="select-like"><option value="all">הצג הכל</option><option value="manual">הצג פקודות ידניות</option></select>'+utilityActionsHtml('additionalEntries')+'<span class="drill-filter-count" id="additionalEntriesCount">'+total+' מתוך '+total+' פקודות</span></div><div id="additionalEntriesTableHost"></div>'; const refresh=()=>renderAdditionalEntriesCenter(document.getElementById('additionalEntriesSearch').value,document.getElementById('additionalEntriesSort').value,document.getElementById('additionalEntriesView').value); refresh(); document.getElementById('additionalEntriesSearch').addEventListener('input',refresh); document.getElementById('additionalEntriesView').addEventListener('change',refresh); document.getElementById('additionalEntriesSort').addEventListener('change',refresh); document.getElementById('additionalEntriesCopy').addEventListener('click',()=>copyUtilityTable('additionalEntriesTableHost')); document.getElementById('additionalEntriesExport').addEventListener('click',()=>exportUtilityTable('additionalEntriesTableHost','פקודות_נוספות')); document.getElementById('manualEntryToggle').addEventListener('click',()=>{ const form=document.getElementById('manualEntryFormWrap'); if(form) form.style.display=form.style.display==='none'?'block':'none'; }); document.getElementById('manualEntryAdd').addEventListener('click',addManualEntryFromForm); document.getElementById('modalBackdrop').classList.add('open'); }
+function searchPageForRowId(rowId){ return rowId.startsWith('pnl_')?'pnl':rowId.startsWith('cashflow_')?'cashflow':rowId.startsWith('ratios_')?'ratios':'balance'; }
+function comprehensiveSearchItems(q){ const needle=String(q||'').trim().toLowerCase(); if(!needle) return []; const out=[]; ['balance','pnl','cashflow','ratios'].forEach(pageKey=>{ const page=DATA.pages[pageKey]; if(!page) return; (page.rows||[]).forEach(row=>{ const vals=[row.name,row.code,row.current,row.compare].join(' ').toLowerCase(); if(vals.includes(needle)) out.push({kind:'row',page:pageKey,rowId:row.id,title:row.name||row.id,meta:[PAGE_LABELS[pageKey]||pageKey,row.code||''].filter(Boolean).join(' | '),row}); }); }); Object.entries(DATA.drilldownData||{}).forEach(([rowId,rows])=>{ const parent=findRow(rowId); (rows||[]).forEach(row=>{ const vals=[row.desc,row.account,row.code,row.current,row.compare,row.sourceType,row.entity,row.company].join(' ').toLowerCase(); if(vals.includes(needle)){ const page=searchPageForRowId(rowId); out.push({kind:'drill',page,rowId,title:row.desc||row.account||row.code||'חשבון',meta:[PAGE_LABELS[page]||page,parent&&parent.name,row.account||row.code,row.entity||row.company,row.sourceType==='additional_entry'?'פקודות נוספות':'Drill-down'].filter(Boolean).join(' ← '),row,parentName:parent&&parent.name}); } }); }); return out; }
+function aggregatedSearchMatches(query){ return comprehensiveSearchItems(query); }
+function openAggregatedSearch(query){ const items=aggregatedSearchMatches(query); modalMode='aggregatedSearch'; setModalActionsVisible(false); document.getElementById('modalTitle').textContent='תוצאות מרוכזות: '+query; document.getElementById('modalMeta').textContent=items.length+' הופעות בכל הדשבורד'; document.getElementById('modalBody').innerHTML=!items.length?'<div class="info-card"><h3>לא נמצאו תוצאות</h3></div>':'<table class="detail-table"><thead><tr><th>עמוד</th><th>סעיף</th><th>תיאור</th><th>חשבון / קוד</th><th>ישות</th><th>'+safe(DATA.dates.current)+'</th><th>'+safe(DATA.dates.compare)+'</th><th>הפרש</th><th>מטבע</th></tr></thead><tbody>'+items.map(item=>{ if(item.kind==='row'){ const r=item.row,c=Number(r.current)||0,p=Number(r.compare)||0; return '<tr class="clickable" data-aggregate-row-id="'+safe(item.rowId)+'"><td>'+safe(PAGE_LABELS[item.page]||item.page)+'</td><td>'+safe(r.name||'')+'</td><td>'+safe(r.name||'')+'</td><td>'+safe(r.code||'')+'</td><td></td><td class="num">'+fmt(c,r.unit)+'</td><td class="num">'+fmt(p,r.unit)+'</td><td class="num '+economicChangeClass(item.page,r,c,p)+'">'+fmt(c-p,r.unit)+'</td><td>'+safe(unitOf(r.unit))+'</td></tr>'; } const r=item.row,c=Number(r.current)||0,p=Number(r.compare)||0; return '<tr class="clickable" data-aggregate-row-id="'+safe(item.rowId)+'"><td>'+safe(PAGE_LABELS[item.page]||item.page)+'</td><td>'+safe(item.parentName||'')+'</td><td>'+safe(r.desc||'')+'</td><td>'+safe(r.account||r.code||'')+'</td><td>'+safe(r.entity||r.company||'')+'</td><td class="num">'+fmt(c)+'</td><td class="num">'+fmt(p)+'</td><td class="num '+economicChangeClass(item.page,findRow(item.rowId)||r,c,p)+'">'+fmt(c-p)+'</td><td>'+safe(r.currency||DATA.meta.displayUnit||DATA.meta.currency||'')+'</td></tr>'; }).join('')+'</tbody></table>'; document.getElementById('modalBackdrop').classList.add('open'); }
+function notesCenterItems(){ return Object.keys(auditNotes).map(id=>{ const text=auditNotes[id]; const ctx=drillNoteContext(id); if(ctx){ let page=''; for(const [key,p] of Object.entries(DATA.pages||{})){ if((p.rows||[]).some(r=>r.id===ctx.parent?.id)){ page=key; break; } } return {id,row:ctx.parent,page,text,drillRow:ctx.row,isDrill:true}; } const row=findRow(id); let page=''; for(const [key,p] of Object.entries(DATA.pages||{})){ if((p.rows||[]).some(r=>r.id===id)){ page=key; break; } } return {id,row,page,text,isDrill:false}; }).filter(x=>String(x.text||'').trim()).sort((a,b)=>String((a.row&&a.row.name)||a.id).localeCompare(String((b.row&&b.row.name)||b.id),'he')); }
+/* AUDIT EVIDENCE CENTER START */
+function evidenceCenterEntries(){ const items=allEvidenceItems(),groups={}; items.forEach(e=>{ (groups[e.targetKey]||(groups[e.targetKey]=[])).push(e); }); return Object.entries(groups).map(([targetKey,list])=>{ const first=list[0],isDrill=first.level==='Drill-down',sectionId=first.sectionId,row=isDrill?(calcRows(sectionId).find(r=>normalizeAccount(r.account||r.code)===normalizeAccount(first.account))||null):findRow(sectionId); return {targetKey,items:list,first,isDrill,sectionId,row,status:targetDisplayStatus(targetKey,list)}; }); }
+function evidenceCenterRowHtml(entry){ const e=entry.first,row=entry.row||{},items=entry.items,targetKey=entry.targetKey,isOpen=openEvidenceDetailKey===targetKey; const sectionLabel=e.subSection||e.mainSection||e.code||''; const desc=entry.isDrill?(row.desc||e.accountName||''):(e.subSection||e.mainSection||e.code||'ראיה כללית'); const account=entry.isDrill?(row.account||row.code||e.account):e.code; const current=entry.isDrill?row.current:(row&&row.current); const compare=entry.isDrill?row.compare:(row&&row.compare); const diff=(Number(current)||0)-(Number(compare)||0); const pctVal=pctChange(current,compare); const currency=entry.isDrill?unitOf(row.currency):unitOf(row&&row.unit); let noteKey='',hasNote=false; if(entry.isDrill){ const rows=calcRows(entry.sectionId); const idx=rows.findIndex(r=>normalizeAccount(r.account||r.code)===normalizeAccount(e.account)); noteKey=drillNoteKey(entry.sectionId,row,idx<0?0:idx); hasNote=!!String(auditNotes[noteKey]||'').trim(); } const colCount=10; return '<tr><td data-label="סעיף">'+safe(sectionLabel)+'</td><td data-label="תיאור חשבון">'+safe(desc)+'</td><td data-label="קוד חשבון">'+safe(account||'')+'</td><td class="num" data-label="'+safe(DATA.dates.current)+'">'+fmt(current)+'</td><td class="num" data-label="'+safe(DATA.dates.compare)+'">'+fmt(compare)+'</td><td class="num" data-label="הפרש">'+fmt(diff)+'</td><td class="num" data-label="שינוי %">'+pctVal+'</td><td data-label="מטבע">'+safe(currency)+'</td><td class="audit-evidence-cell" data-label="ראיות ביקורת">'+evidenceStatusButtonHtml(targetKey,items)+'</td><td class="drill-note-cell" data-label="הערה">'+(entry.isDrill?'<button type="button" class="drill-note-toggle '+(hasNote?'has-note':'')+'" data-drill-note-key="'+safe(noteKey)+'" title="'+(hasNote?'ערוך הערה':'הוסף הערה')+'">◢</button>':'')+'</td></tr>'+(isOpen?'<tr class="audit-evidence-detail-row"><td colspan="'+colCount+'">'+evidenceDetailsHtml(targetKey,items)+'</td></tr>':'')+(entry.isDrill?'<tr class="drill-note-editor-row" data-drill-note-editor="'+safe(noteKey)+'" style="display:none"><td colspan="'+colCount+'"><textarea class="drill-note-editor" data-drill-note-input="'+safe(noteKey)+'" placeholder="הוסף הערה לשורת Drill-down זו...">'+safe(auditNotes[noteKey]||'')+'</textarea></td></tr>':''); }
+function evidenceCenterSortAmount(entry){ if(entry&&entry.isDrill&&entry.row) return Number(entry.row.current)||0; const n=entry&&entry.first&&entry.first.numeric; if(n&&Number.isFinite(Number(n.jsonAmount))) return Number(n.jsonAmount); if(n&&Number.isFinite(Number(n.documentAmount))) return Number(n.documentAmount); return 0; }
+function evidenceCenterExportRows(){ return currentEvidenceCenterEntries.map(entry=>{ const e=entry.first||{}, row=entry.row||{}, n=e.numeric||{}; const section=e.subSection||e.mainSection||e.code||''; const fileNames=[...new Set((entry.items||[]).map(item=>String(item.fileName||'').trim()).filter(Boolean))].join(' | '); return {section,account:entry.isDrill?(row.account||row.code||e.account||''):(e.code||''),desc:entry.isDrill?(row.desc||e.accountName||''):(e.subSection||e.mainSection||e.accountName||''),current:entry.isDrill?(Number(row.current)||0):(Number.isFinite(Number(n.jsonAmount))?Number(n.jsonAmount):0),compare:entry.isDrill?(Number(row.compare)||0):0,diff:entry.isDrill?(Number(row.diff)||((Number(row.current)||0)-(Number(row.compare)||0))):(Number.isFinite(Number(n.difference))?Number(n.difference):0),currency:entry.isDrill?(row.currency||''):(n.documentCurrency||''),evidenceStatus:evidenceStatusInfo(entry.status).label,evidenceCount:entry.items.length,mappingLevel:entry.isDrill?'Drill-down':(e.level||''),fileName:fileNames}; }); }
+function copyEvidenceCenterData(){ const rows=evidenceCenterExportRows(); if(!rows.length){ showToast('אין נתונים להעתקה'); return; } const headers=['סעיף','תיאור חשבון','קוד חשבון',DATA.dates.current,DATA.dates.compare,'הפרש','שינוי %','מטבע','סטטוס ראיות','מספר ראיות','רמת שיוך','מסמכים']; const lines=[headers.join('\t')]; rows.forEach(r=>lines.push([r.section,r.desc,r.account,r.current,r.compare,r.diff,pctChange(r.current,r.compare),r.currency,r.evidenceStatus,r.evidenceCount,r.mappingLevel,r.fileName].join('\t'))); copyText(lines.join('\n')); }
+function exportEvidenceCenterData(){ const rows=evidenceCenterExportRows(); if(!rows.length){ showToast('הייצוא נכשל — לא נמצאו נתונים'); return; } let table='<html dir="rtl"><head><meta charset="utf-8"></head><body><table border="1"><thead><tr><th>סעיף</th><th>תיאור חשבון</th><th>קוד חשבון</th><th>'+safe(DATA.dates.current)+'</th><th>'+safe(DATA.dates.compare)+'</th><th>הפרש</th><th>שינוי %</th><th>מטבע</th><th>סטטוס ראיות</th><th>מספר ראיות</th><th>רמת שיוך</th><th>מסמכים</th></tr></thead><tbody>'; rows.forEach(r=>{ table+='<tr><td>'+safe(r.section)+'</td><td>'+safe(r.desc)+'</td><td>'+safe(r.account)+'</td><td>'+r.current+'</td><td>'+r.compare+'</td><td>'+r.diff+'</td><td>'+safe(pctChange(r.current,r.compare))+'</td><td>'+safe(unitOf(r.currency))+'</td><td>'+safe(r.evidenceStatus)+'</td><td>'+r.evidenceCount+'</td><td>'+safe(r.mappingLevel)+'</td><td>'+safe(r.fileName)+'</td></tr>'; }); table+='</tbody></table></body></html>'; const filename='מרכז_ראיות_ביקורת_'+new Date().getFullYear()+'.xls'; const blob=new Blob(['\ufeff'+table],{type:'application/vnd.ms-excel;charset=utf-8'}); try{ const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=filename; a.style.display='none'; document.body.appendChild(a); a.click(); setTimeout(()=>{a.remove();URL.revokeObjectURL(url);},1500); showToast('קובץ האקסל נוצר מהנתונים המסוננים המוצגים'); }catch(e){ showToast('הדפדפן חסם הורדה. השתמש בהעתק נתונים'); } }
+function renderEvidenceCenter(){ const host=document.getElementById('evidenceCenterTableHost'); if(!host) return; const q=String((document.getElementById('evidenceCenterSearch')||{}).value||'').trim().toLowerCase(); const status=String((document.getElementById('evidenceCenterStatus')||{}).value||''); const level=String((document.getElementById('evidenceCenterLevel')||{}).value||''); const section=String((document.getElementById('evidenceCenterSection')||{}).value||''); let entries=evidenceCenterEntries(); entries=entries.filter(entry=>{ const e=entry.first; const allItems=entry.items||[]; const hay=allItems.flatMap(item=>[item.fileName,item.documentType,item.matchReason,item.account,item.accountName,item.mainSection,item.subSection,item.code]).concat([entry.row&&entry.row.desc,entry.row&&entry.row.account]).join(' ').toLowerCase(); const qOk=!q||hay.includes(q); const automaticStatusMatch=!status||(['handled','needsAction'].includes(status)?entry.status===status:allItems.some(item=>item.statusKey===status)); const lOk=!level||(level==='Drill-down'?entry.isDrill:(!entry.isDrill&&e.level===level)); const sectionLabels=allItems.flatMap(item=>[item.subSection,item.mainSection,item.code]).filter(Boolean); const secOk=!section||sectionLabels.includes(section); const attentionOk=!evidenceCenterAttentionOnly||['gap','unable','needsAction'].includes(entry.status); return qOk&&automaticStatusMatch&&lOk&&secOk&&attentionOk; }); if(evidenceCenterSort==='desc') entries.sort((a,b)=>evidenceCenterSortAmount(b)-evidenceCenterSortAmount(a)); else if(evidenceCenterSort==='asc') entries.sort((a,b)=>evidenceCenterSortAmount(a)-evidenceCenterSortAmount(b)); currentEvidenceCenterEntries=entries.slice(); const count=document.getElementById('evidenceCenterCount'); if(count) count.textContent=entries.length+' יעדים עם ראיות'; host.innerHTML=!entries.length?'<div class="info-card"><h3>לא נמצאו ראיות</h3><p>אין יעדים שמתאימים לסינון הנוכחי.</p></div>':'<table class="detail-table"><thead><tr><th>סעיף</th><th>תיאור חשבון</th><th>קוד חשבון</th><th>'+safe(DATA.dates.current)+'</th><th>'+safe(DATA.dates.compare)+'</th><th>הפרש</th><th>שינוי %</th><th>מטבע</th><th>ראיות ביקורת</th><th>הערה</th></tr></thead><tbody>'+entries.map(evidenceCenterRowHtml).join('')+'</tbody></table>'; }
+function openEvidenceCenter(){ modalMode='evidenceCenter'; setModalActionsVisible(false); openEvidenceDetailKey=null; evidenceCenterSort='original'; currentEvidenceCenterEntries=[]; const all=evidenceCenterEntries(); const sectionOptions=[...new Set(all.flatMap(x=>(x.items||[]).map(item=>item.subSection||item.mainSection||item.code).filter(Boolean)))].sort((a,b)=>String(a).localeCompare(String(b),'he')); document.getElementById('modalTitle').textContent='מרכז ראיות ביקורת'; document.getElementById('modalMeta').textContent='מקבץ כל שורות ה-Drill-down ותתי-הסעיפים שיש להם ראיות ביקורת'; document.getElementById('modalBody').innerHTML='<div class="evidence-center-filters"><input id="evidenceCenterSearch" type="search" placeholder="חיפוש חופשי: חשבון, סעיף, מסמך, הלוואה, פחת..."><select id="evidenceCenterStatus"><option value="">כל הסטטוסים</option><option value="match">תואם</option><option value="gap">פער</option><option value="unable">לא ניתן לבדוק</option><option value="activity">ראיה לפעילות</option><option value="handled">טופל</option><option value="needsAction">דורש טיפול</option></select><select id="evidenceCenterLevel"><option value="">כל רמות השיוך</option><option value="Drill-down">Drill-down</option><option value="תת-סעיף">תת-סעיף</option><option value="סעיף ראשי">סעיף ראשי</option></select><select id="evidenceCenterSection"><option value="">כל הסעיפים</option>'+sectionOptions.map(x=>'<option value="'+safe(x)+'">'+safe(x)+'</option>').join('')+'</select><button type="button" id="evidenceAttentionOnly" class="evidence-attention-toggle'+(evidenceCenterAttentionOnly?' active':'')+'">רק דורש תשומת לב</button><label style="display:inline-flex;align-items:center;gap:6px;color:var(--gold2);font-size:12px;font-weight:700">מיון <select id="evidenceCenterSort" aria-label="מיון מרכז ראיות ביקורת"><option value="original">סדר מקורי</option><option value="desc">מסכום גבוה לסכום נמוך</option><option value="asc">מסכום נמוך לסכום גבוה</option></select></label><button type="button" id="evidenceCenterManualAssign">+ שיוך ראיה ידני</button><button type="button" id="copyEvidenceCenter">העתק נתונים</button><button type="button" id="exportEvidenceCenter">ייצוא לאקסל</button><span class="evidence-center-count" id="evidenceCenterCount"></span></div>'+evidenceCenterManualAssignHtml()+'<div id="evidenceCenterTableHost"></div>'; const refresh=()=>renderEvidenceCenter(); ['evidenceCenterSearch','evidenceCenterStatus','evidenceCenterLevel','evidenceCenterSection'].forEach(id=>{ const el=document.getElementById(id); if(el) el.addEventListener(id==='evidenceCenterSearch'?'input':'change',refresh); }); document.getElementById('evidenceAttentionOnly').addEventListener('click',()=>{ evidenceCenterAttentionOnly=!evidenceCenterAttentionOnly; document.getElementById('evidenceAttentionOnly').classList.toggle('active',evidenceCenterAttentionOnly); refresh(); }); document.getElementById('evidenceCenterSort').addEventListener('change',event=>{ evidenceCenterSort=event.target.value||'original'; refresh(); }); document.getElementById('evidenceCenterManualAssign').addEventListener('click',()=>{ const box=document.getElementById('evidenceCenterManualBox'); if(box) box.style.display=box.style.display==='none'?'block':'none'; }); const manualTarget=document.getElementById('evidenceCenterManualTarget'); if(manualTarget) manualTarget.addEventListener('change',renderEvidenceCenterManualDocs); document.getElementById('copyEvidenceCenter').addEventListener('click',copyEvidenceCenterData); document.getElementById('exportEvidenceCenter').addEventListener('click',exportEvidenceCenterData); refresh(); document.getElementById('modalBackdrop').classList.add('open'); }
+function refreshEvidenceViews(){ if(modalMode==='drilldown'&&activeSectionId){ const t=document.getElementById('drillAmountThreshold'); if(t) renderDrilldownRows(activeSectionId,t.value,document.getElementById('drillPctThreshold').value,document.getElementById('drillTextSearch').value,document.getElementById('drillSortSelect').value); } else if(modalMode==='evidenceCenter'){ renderEvidenceCenter(); const manualTarget=document.getElementById('evidenceCenterManualTarget'); if(manualTarget&&manualTarget.value) renderEvidenceCenterManualDocs(); } }
+/* AUDIT EVIDENCE CENTER END */
+function openNotesCenter(){ modalMode='notesCenter'; setModalActionsVisible(false); const items=notesCenterItems(); document.getElementById('modalTitle').textContent='הערות'; document.getElementById('modalMeta').textContent=items.length?items.length+' הערות שנשמרו בדשבורד':'אין הערות שמורות'; document.getElementById('modalBody').innerHTML=!items.length?'<div class="info-card"><h3>אין הערות</h3><p>עדיין לא נשמרו הערות בדשבורד.</p></div>':'<div class="notes-center-list">'+items.map(item=>{ const title=item.isDrill?safe((item.row&&item.row.name)||'סעיף')+' → '+safe((item.drillRow&&(item.drillRow.desc||item.drillRow.account||item.drillRow.code))||'שורת Drill-down'):safe((item.row&&item.row.name)||item.id); const meta=[PAGE_LABELS[item.page]||item.page,item.isDrill&&item.drillRow?(item.drillRow.account||item.drillRow.code||''):(item.row&&item.row.code)||'',item.isDrill?'Drill-down':'סעיף'].filter(Boolean).join(' | '); return '<div class="notes-center-item"><div class="notes-center-title">'+title+'</div><div class="notes-center-meta">'+safe(meta)+'</div><div class="notes-center-text">'+safe(item.text)+'</div></div>'; }).join('')+'</div>'; document.getElementById('modalBackdrop').classList.add('open'); }
+function notesSectionHtml(id){ const val = auditNotes[id] || ''; return '<div class="notes-box"><label for="auditNoteInput">📝 הערת ביקורת</label><textarea id="auditNoteInput" data-row-id="' + id + '" placeholder="הוסף הערה/הסבר לשינוי...">' + safe(val) + '</textarea><div class="notes-hint">ההערה נשמרת אוטומטית מקומית בדפדפן בזמן ההקלדה.</div></div>'; }
+function closeModal(){ document.getElementById('modalBackdrop').classList.remove('open'); document.getElementById('copyFallback').style.display='none'; }
+const PAGE_LABELS={balance:'מאזן',pnl:'רווח והפסד',cashflow:'תזרים מזומנים',ratios:'יחסים פיננסים'};
+function setModalActionsVisible(visible){ const d=visible?'':'none'; document.getElementById('copyModalData').style.display=d; document.getElementById('exportModalData').style.display=d; const sortWrap=document.getElementById('drillSortWrap'); if(sortWrap) sortWrap.style.display=visible?'inline-flex':'none'; if(!visible){ currentDrillViewRows=[]; document.getElementById('copyWholeSection').style.display='none'; document.getElementById('exportWholeSection').style.display='none'; } }
+function allLeafRows(){ const out=[]; ['balance','pnl','cashflow'].forEach(key => { const page=DATA.pages[key]; if(!page) return; (page.rows||[]).forEach(row => { if(row.type==='item' && (!row.children || !row.children.length)){ out.push({row, page:key}); } }); }); return out; }
+function exceptionNumberPresent(row,key){ const v=row&&row[key]; return v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v)); }
+function exceptionRoundQuantum(){ const u=String(defaultDisplayUnit()||'').toLowerCase(); if(/מיליון|million|\bmn\b|\bmm\b/.test(u)) return .5; if(/אלפ|thousand|\b000\b/.test(u)) return 100; return 100000; }
+function isRoundExceptionAmount(value){ const x=Math.abs(Number(value)); if(!Number.isFinite(x)||x===0) return false; const q=exceptionRoundQuantum(); return x>=q && Math.abs((x/q)-Math.round(x/q))<1e-9; }
+function exceptionClassification(parentName,row){
+  const parent=String(parentName||'').replace(/\s+/g,' ').trim();
+  const text=[row&&row.desc,row&&row.name,row&&row.account,row&&row.code].filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
+  if(!parent||!text) return '';
+  if(/ספק/.test(parent) && /הלווא|אשראי\s*בנקאי|אשראי\s*לזמן/.test(text)) return 'שם החשבון מצביע על הלוואה/אשראי, אך הוא משויך לסעיף ספקים.';
+  if(/רכוש\s*קבוע/.test(parent) && /שכר|משכורת|שכירות|פרסום|ייעוץ|עמלה|ארנונה|חשמל|מים/.test(text)) return 'שם החשבון נראה בעל אופי הוצאתי, אך הוא משויך לרכוש קבוע.';
+  if(/לקוחות/.test(parent) && /הלווא|ספק/.test(text)) return 'שם החשבון אינו נראה טיפוסי לסעיף לקוחות.';
+  if(/מלאי/.test(parent) && /הלווא|שכר|פחת|ריבית/.test(text)) return 'שם החשבון אינו נראה טיפוסי לסעיף מלאי.';
+  if(/שוטפ/.test(parent) && !/לא\s*שוטפ/.test(parent) && /לזמן\s*ארוך|לא\s*שוטפ/.test(text)) return 'שם החשבון מצביע על אופי לא־שוטף, אך הוא משויך לסעיף שוטף.';
+  if(/לא\s*שוטפ/.test(parent) && /לזמן\s*קצר/.test(text)) return 'שם החשבון מצביע על אופי שוטף/קצר, אך הוא משויך לסעיף לא־שוטף.';
+  return '';
+}
+function exceptionThresholdHit(v,current,compare,amount,pctMin,structural){
+  const amountHit=structural?Math.max(Math.abs(Number(current)||0),Math.abs(Number(compare)||0),Math.abs(v.diff))>=amount:Math.abs(v.diff)>=amount;
+  const pctHit=Math.abs(v.pct)>=pctMin;
+  if(amount===0&&pctMin===0) return true;
+  if(amount>0&&pctMin>0) return amountHit&&pctHit;
+  if(amount>0) return amountHit;
+  return pctHit;
+}
+function drillExceptionCandidates(){
+  const out=[];
+  Object.entries(DATA.drilldownData||{}).forEach(([rowId,rows])=>{
+    const parent=findRow(rowId);
+    const page=searchPageForRowId(rowId);
+    (rows||[]).forEach((row,index)=>{
+      const hasCurrent=exceptionNumberPresent(row,'current'), hasCompare=exceptionNumberPresent(row,'compare');
+      if(!hasCurrent&&!hasCompare) return;
+      const current=hasCurrent?Number(row.current):0, compare=hasCompare?Number(row.compare):0;
+      const diff=current-compare;
+      const pct=compare===0?(current===0?0:100):diff/Math.abs(compare)*100;
+      out.push({rowId,parent,page,row,index,current,compare,v:{diff,pct},hasCurrent,hasCompare});
+    });
+  });
+  return out;
+}
+function exceptionReverseBalance(item){
+  if(!item||item.page!=='balance'||!item.parent||!item.hasCurrent) return false;
+  const parentCurrent=Number(item.parent.current);
+  const childCurrent=Number(item.current);
+  if(!Number.isFinite(parentCurrent)||!Number.isFinite(childCurrent)||parentCurrent===0||childCurrent===0) return false;
+  return Math.sign(parentCurrent)!==Math.sign(childCurrent);
+}
+function exceptionAuditBaseChecks(item){
+  const section=String(item.section||'').replace(/\s+/g,' ').trim();
+  const code=String(item.parentCode||'').trim().toUpperCase();
+
+  if(item.page==='pnl'){
+    if(/^T/.test(code)) return ['בדוק Cut-off של ההכנסות סביב תאריך המאזן.','בדוק חשבוניות/חוזים ומסמכי בסיס לעסקאות שנבחרו.','בדוק תקבולים הקשורים ליתרה או לעסקאות לאחר התקופה.','בדוק זיכויים לאחר התקופה והאם הם משפיעים על ההכרה בהכנסה.'];
+    if(/^U/.test(code)) return ['התאם את הסעיף למלאי ולקניות הרלוונטיות.','בדוק Cut-off של קניות ועלות המכר סביב תאריך המאזן.','בדוק חשבוניות ספקים ומסמכי בסיס לפריטים שנבחרו.','נתח את השינוי בשיעור הרווח הגולמי והסבר סטיות מהותיות.'];
+    if(/^V/.test(code)) return ['בדוק מסמכי מקור להוצאות שנבחרו.','בדוק Cut-off והשתייכות ההוצאה לתקופה.','השווה את ההוצאה להיקף הפעילות/ההכנסות וחפש שינוי לא מוסבר.','בדוק הוצאות חד־פעמיות וסיווגן בסעיף המתאים.'];
+    if(/^W/.test(code)) return ['בדוק מסמכי מקור להוצאות שנבחרו.','בדוק Cut-off והשתייכות ההוצאה לתקופה.','בדוק הוצאות חריגות או חדשות והסבר את מקורן.','בדוק עסקאות עם צדדים קשורים ואת סיווג ההוצאה.'];
+    if(/^VA/.test(code)) return ['התאם את הוצאות/הכנסות המימון להלוואות ולאשראי.','בצע חישוב מחדש של ריבית על יתרות מהותיות.','בדוק הפרשי שער והשפעתם על הסעיף.','בדוק עמלות ואירועי מימון חדשים בתקופה.'];
+    if(/^VB/.test(code)) return ['בדוק מסמכי מקור ומהות העסקה.','בדוק האם מדובר בפריט חד־פעמי או חוזר.','בדוק את הסיווג וההצגה בדוח רווח והפסד.','התאם את הפריט לנכס או להתחייבות הקשורים אליו, ככל שרלוונטי.'];
+    if(/^VD/.test(code)) return ['התאם את הוצאות המס לחישוב המס לתקופה.','בדוק את שיעור המס האפקטיבי והסבר סטיות.','התאם לדוח ההתאמה למס/דוח המס ככל שקיים.','בדוק שומות, מקדמות ומסים נדחים הרלוונטיים לסעיף.'];
+    if(/^VE/.test(code)) return ['בדוק את הדוחות הכספיים של החברה המוחזקת.','אמת את אחוז ההחזקה ששימש בחישוב.','חשב מחדש את חלק החברה ברווח/הפסד.','בדוק דיבידנדים והתאמות לפי שיטת השווי המאזני.'];
+  }
+
+  if(/מזומנ|שווי\s*מזומנ/.test(section)) return ['קבל/בדוק אישורי בנקים ליתרות מהותיות.','בדוק התאמות בנקים ופריטים פתוחים מהותיים.','בדוק תנועות מהותיות לאחר תאריך המאזן.','בדוק מגבלות שימוש, שעבודים או יתרות מוגבלות.'];
+  if(/פיקדונ|השקעות.*קצר|ניירות.*ערך.*קצר/.test(section)) return ['קבל אישור יתרה מצד שלישי או אסמכתה חיצונית.','התאם את היתרה למסמכי ההשקעה/הפיקדון.','בדוק שווי, ריבית או תשואה שנצברו לתאריך המאזן.','בדוק סיווג שוטף ומגבלות/שעבודים.'];
+  if(/לקוחות/.test(section)) return ['בדוק תקבולים לאחר תאריך המאזן.','בדוק גיול לקוחות וימי פיגור.','שקול/בצע אישורי יתרה ללקוחות מהותיים.','בדוק זיכויים לאחר התקופה והשלכתם על ECL/חובות מסופקים.'];
+  if(/חייבים|יתרות\s*חובה/.test(section)) return ['בדוק מסמכי בסיס ליתרה.','בדוק גבייה או סילוק לאחר תאריך המאזן.','בדוק את מהות היתרה ואת סיווגה בדוחות.','בדוק יתרות ישנות או ללא תנועה והאם נדרשת הפרשה.'];
+  if(/מלאי/.test(section)) return ['בדוק השתתפות/תוצאות ספירת מלאי וקיום פיזי.','בדוק את עלות המלאי ומסמכי התמחיר.','בדוק NRV, התיישנות ומלאי איטי/מת.','בדוק Cut-off של קניות ומכירות סביב תאריך המאזן.'];
+  if(/נכס.*שוטפ.*אחר|נכסים\s*שוטפים\s*אחרים/.test(section)) return ['בדוק מסמכי בסיס ליתרה.','בדוק מימוש או סילוק לאחר תאריך המאזן.','בדוק סיווג והצגה בדוחות.','בדוק יתרות ישנות או לא מוסברות.'];
+  if(/השקעות|הלוואות.*יתרות\s*חובה.*ארוך|יתרות\s*חובה.*ארוך/.test(section)) return ['קבל אישור יתרה או אסמכתה חיצונית.','בדוק הסכמים ותנאי פירעון.','חשב מחדש ריבית/תשואה מהותית.','בדוק ירידת ערך וסיווג בין שוטף ללא־שוטף.'];
+  if(/רכוש\s*קבוע/.test(section)) return ['בדוק חשבוניות ומסמכי מקור לתוספות מהותיות.','בדוק היוון לעומת רישום כהוצאה.','בדוק גריעות/מכירות וקיום הנכסים שנבחרו.','חשב מחדש פחת ובחן אינדיקציות לירידת ערך.'];
+  if(/זכות\s*שימוש/.test(section)) return ['בדוק את הסכמי החכירה הרלוונטיים.','התאם את הנכס להתחייבות החכירה.','חשב מחדש פחת על נכס זכות השימוש.','בדוק שינויי חוזה, תקופת חכירה ואופציות הארכה/ביטול.'];
+  if(/בלתי\s*מוחש|מוניטין/.test(section)) return ['בדוק מסמכי רכישה/פיתוח התומכים בנכס.','בדוק עמידה בתנאי היוון.','חשב מחדש הפחתה כאשר רלוונטי.','בדוק אורך חיים שימושי ואינדיקציות לירידת ערך.'];
+  if(/נדל.?ן\s*להשקעה/.test(section)) return ['בדוק מסמכי בעלות וזכויות בנכס.','בדוק הערכת שווי והנחות מהותיות.','התאם הכנסות שכירות להסכמים.','בדוק סיווג הנכס ושינויים מהותיים בתקופה.'];
+  if(/מסים?\s*נדח/.test(section)) return ['התאם את היתרה להפרשים הזמניים.','בדוק את שיעורי המס ששימשו בחישוב.','בחן את יכולת המימוש של נכס מס נדחה, ככל שקיים.','התאם את החישוב לדוח המס/חישוב המס לתקופה.'];
+  if(/אשראי|הלוואות|הלוואה/.test(section) && !/השקעות|יתרות\s*חובה/.test(section)) return ['קבל/בדוק אישורי בנקים או מלווים.','בדוק הסכמי הלוואה ותנאים מהותיים.','חשב מחדש ריבית והוצאות נלוות.','בדוק מועדי פירעון, סיווג ועמידה באמות מידה פיננסיות.'];
+  if(/ספקים|נותני\s*שירות/.test(section)) return ['בדוק תשלומים לאחר תאריך המאזן.','שקול/בצע אישורי ספקים או התאמות לכרטסת ספק.','בדוק Cut-off של רכישות ושירותים.','בצע חיפוש התחייבויות שלא נרשמו באמצעות מסמכים/תשלומים לאחר המאזן.'];
+  if(/זכאים|יתרות\s*זכות/.test(section)) return ['בדוק תשלומים לאחר תאריך המאזן.','בדוק מסמכים תומכים ליתרה.','בדוק Cut-off והשתייכות ההתחייבות לתקופה.','בדוק שלמות ההתחייבות ויתרות ישנות/לא מוסברות.'];
+  if(/עובדים|מוסדות/.test(section) && !/הטבות/.test(section)) return ['התאם את היתרה לחישובי השכר.','בדוק תשלומים לעובדים/מוסדות לאחר תאריך המאזן.','בדוק הפרשות סוציאליות והתחייבויות נלוות.','בדוק התאמות לרשויות, בונוסים וחופשה ככל שרלוונטי.'];
+  if(/התחייבויות?\s*חכירה|חכירה/.test(section)) return ['בדוק את הסכמי החכירה הרלוונטיים.','התאם את ההתחייבות לנכס זכות השימוש.','בדוק את לוח הסילוקין ותשלומי החכירה.','חשב מחדש ריבית ובדוק סיווג שוטף/לא־שוטף.'];
+  if(/הטבות\s*לעובדים/.test(section)) return ['התאם את היתרה לחישוב/דוח האקטוארי.','בדוק נתוני עובדים ששימשו בחישוב.','בדוק תשלומים ותנועות מהותיות בתקופה.','בדוק הנחות אקטואריות ושינויים מהותיים לעומת התקופה הקודמת.'];
+  if(/הפרשות/.test(section)) return ['בדוק מסמכים וחוות דעת התומכים בהפרשה.','בדוק תשלומים או התפתחויות לאחר תאריך המאזן.','בחן את הסתברות ההתחייבות והצורך בהכרה/גילוי.','בדוק את אומדן הסכום והתנועה לעומת התקופה הקודמת.'];
+  if(/התחייבויות?.*אחר/.test(section)) return ['בדוק מסמכי בסיס ליתרה.','בדוק תשלומים לאחר תאריך המאזן.','בדוק Cut-off והשתייכות לתקופה.','בדוק סיווג ויתרות ישנות או לא מוסברות.'];
+  if(/הון\s*מניות|פרמיה/.test(section)) return ['בדוק פרוטוקולים ואישורים לשינויים בהון.','התאם לרישומי רשם החברות ככל שרלוונטי.','בדוק תנועות הון בתקופה.','בדוק מסמכי הנפקה/הקצאה והתאמה להון הרשום.'];
+  if(/קרנות\s*הון/.test(section)) return ['התאם את היתרה למקור הקרן.','בדוק תנועות בקרן בתקופה.','בדוק חישובים ומסמכים תומכים.','בדוק הצגה והתאמה לדוח על השינויים בהון.'];
+  if(/עודפים|יתרת\s*רווח/.test(section)) return ['בצע התאמת פתיחה + רווח נקי ± תנועות הוניות = סגירה.','בדוק חלוקות דיבידנד בתקופה.','בדוק פרוטוקולים והחלטות בעלי מניות.','התאם לדוח על השינויים בהון ולתנועות חריגות.'];
+  if(/זכויות.*שאינן.*שליטה|זכויות.*מיעוט/.test(section)) return ['אמת את אחוזי ההחזקה.','חשב מחדש את חלק זכויות שאינן מקנות שליטה ברווח.','בדוק דיבידנדים ותנועות בהון.','בדוק שינויים בהחזקה והתאמה לדוחות החברות הבנות.'];
+
+  return ['בדוק מסמכי מקור התומכים ביתרה/בתנועה.','בדוק אירועים או סילוק לאחר תאריך המאזן, ככל שרלוונטי.','השווה לתקופה הקודמת וקבל הסבר לשינוי.','בדוק סיווג, הצגה והשתייכות לתקופה.'];
+}
+function exceptionSpecificAuditCheck(item){
+  const isAdditional=String(item.sourceType||'')==='additional_entry';
+  const prefix=isAdditional?'בדוק את הפקודה הנוספת שיצרה את החריגה, כולל מסמך מקור, צד נגדי ואישור; ':'';
+  if(item.types.includes('reverse')) return prefix+'בדוק מדוע סימן יתרת החשבון הפוך מסימן סעיף האב והאם נדרש סיווג מחדש, קיזוז או הצגה נפרדת.';
+  if(item.types.includes('class')) return prefix+'אמת את מהות החשבון מול הסעיף בדוח ואת הסיווג וההצגה המתאימים.';
+  if(item.types.includes('new')) return prefix+'בדוק את מקור יצירת היתרה/החשבון בתקופה ואת המסמכים הראשונים התומכים בו.';
+  if(item.types.includes('gone')) return prefix+'בדוק כיצד היתרה נסגרה/אופסה ואת אסמכתאות הסילוק, המחיקה או הסיווג מחדש.';
+  if(item.types.includes('round')) return prefix+'בדוק את מסמך המקור שהוביל לסכום העגול והאם נדרש הסבר ייעודי.';
+  if(item.types.includes('repeat')) return prefix+'בדוק מדוע אותו סכום חוזר במספר שורות והאם מדובר בדפוס תקין, שכפול או התאמה.';
+  if(item.types.includes('material')) return prefix+'בדוק את הגורם לשינוי המהותי מול מסמכי מקור והסבר הנהלה.';
+  return isAdditional?'בדוק את הפקודה הנוספת, מסמך המקור, הצד הנגדי והאישור לביצועה.':'';
+}
+function exceptionAuditChecks(item){
+  const checks=exceptionAuditBaseChecks(item).slice(0,4);
+  const specific=exceptionSpecificAuditCheck(item);
+  if(specific&&!checks.includes(specific)) checks.push(specific);
+  return checks.slice(0,5);
+}
+function exceptionCenterItems(amountThreshold,pctThreshold){
+  const amount=Math.max(0,Number(amountThreshold)||0), pctMin=Math.max(0,Number(pctThreshold)||0);
+  const items=[];
+
+  const drill=drillExceptionCandidates();
+  const repeated=new Map();
+  drill.forEach(item=>{
+    const x=Math.abs(item.current);
+    if(!Number.isFinite(x)||x===0) return;
+    const key=(Math.round(x*1e6)/1e6).toFixed(6);
+    const arr=repeated.get(key)||[];
+    arr.push(item);
+    repeated.set(key,arr);
+  });
+
+  drill.forEach(item=>{
+    const types=[],labels=[],reasons=[];
+    if(exceptionThresholdHit(item.v,item.current,item.compare,amount,pctMin,false)){
+      types.push('material'); labels.push('שינוי מהותי'); reasons.push('השינוי ברמת ה־Drill-down חוצה את סף הסכום/האחוז שנבחר.');
+    }
+    if(item.hasCurrent&&item.hasCompare&&item.compare===0&&item.current!==0){
+      types.push('new'); labels.push('חדש/הופיע'); reasons.push('בתקופה הקודמת היתרה הייתה 0 ובתקופה הנוכחית קיימת יתרה.');
+    }
+    if(item.hasCurrent&&item.hasCompare&&item.current===0&&item.compare!==0){
+      types.push('gone'); labels.push('נעלם/אופס'); reasons.push('בתקופה הקודמת הייתה יתרה ובתקופה הנוכחית היתרה היא 0.');
+    }
+    if(item.hasCurrent&&isRoundExceptionAmount(item.current)){
+      types.push('round'); labels.push('סכום עגול'); reasons.push('היתרה הנוכחית היא סכום עגול לפי יחידת ההצגה של הדשבורד.');
+    }
+    const repeatKey=(Math.round(Math.abs(item.current)*1e6)/1e6).toFixed(6);
+    const repeatCount=(repeated.get(repeatKey)||[]).length;
+    if(item.current!==0&&repeatCount>=3){
+      types.push('repeat'); labels.push('סכום חוזר'); reasons.push('אותו סכום נוכחי מופיע ב־'+repeatCount+' שורות Drill-down.');
+    }
+    const classReason=exceptionClassification(item.parent?item.parent.name:'',item.row);
+    if(classReason){
+      types.push('class'); labels.push('חשד לסיווג'); reasons.push(classReason);
+    }
+    if(exceptionReverseBalance(item)){
+      types.push('reverse'); labels.push('יתרה הפוכה'); reasons.push('סימן יתרת ה־Drill-down הפוך מסימן היתרה הנוכחית של סעיף האב.');
+    }
+    if(!types.length) return;
+    if(!types.includes('reverse')&&!exceptionThresholdHit(item.v,item.current,item.compare,amount,pctMin,true)) return;
+    items.push({
+      source:'drill',rowId:item.rowId,page:item.page,
+      section:item.parent?item.parent.name:item.rowId,
+      parentCode:item.parent?item.parent.code:'',
+      sourceType:item.row.sourceType||'trial_balance',
+      account:[item.row.account||item.row.code||'',item.row.desc||item.row.name||''].filter(Boolean).join(' — '),
+      current:item.current,compare:item.compare,v:item.v,unit:item.row.unit||item.row.currency||'',
+      types,labels,reasons
+    });
+  });
+
+  items.forEach(item=>item.auditChecks=exceptionAuditChecks(item));
+  items.sort((a,b)=>Math.max(Math.abs(b.v.diff),Math.abs(b.v.pct))-Math.max(Math.abs(a.v.diff),Math.abs(a.v.pct)));
+  return items;
+}
+function renderExceptionsList(amountThreshold,pctThreshold,typeFilter,sortMode,textQuery){
+  const filter=String(typeFilter||'all');
+  const q=String(textQuery||'').trim().toLowerCase();
+  const terms=q.split(/\s+/).filter(Boolean);
+  const all=exceptionCenterItems(amountThreshold,pctThreshold);
+  const byType=filter==='all'?all:all.filter(item=>item.types.includes(filter));
+  const filtered=!terms.length?byType:byType.filter(item=>{ const hay=[PAGE_LABELS[item.page]||item.page,item.section,item.parentCode,item.account,item.sourceType,(item.labels||[]).join(' '),(item.reasons||[]).join(' ')].join(' ').toLowerCase(); return terms.every(term=>hay.includes(term)); });
+  const items=sortUtilityItems(filtered,sortMode,item=>item.current);
+  document.getElementById('excCount').textContent=items.length+' חריגות';
+  const host=document.getElementById('excTableHost');
+  if(!items.length){
+    host.innerHTML='<div class="info-card"><h3>אין חריגות</h3><p>לא נמצאו תוצאות שעומדות במסננים שנבחרו.</p></div>';
+    host.onclick=null;
+    return;
+  }
+  host.innerHTML='<table class="detail-table"><thead><tr><th>עמוד</th><th>סעיף</th><th>חשבון / תיאור</th><th>'+safe(DATA.dates.current)+'</th><th>'+safe(DATA.dates.compare)+'</th><th>הפרש</th><th>שינוי %</th><th>סוג חריגה</th><th>הסבר</th><th>בדיקות מומלצות</th></tr></thead><tbody>'+
+    items.map((item,index)=>{
+      const auditId='excAudit_'+index;
+      const checks=(item.auditChecks||[]).slice(0,5);
+      const checkHtml=checks.length?'<ol>'+checks.map(x=>'<li>'+safe(x)+'</li>').join('')+'</ol>':'<div class="hint">לא נמצאו בדיקות מותאמות לסעיף.</div>';
+      return '<tr class="clickable" data-row-id="'+safe(item.rowId)+'"><td data-label="עמוד">'+safe(PAGE_LABELS[item.page]||item.page)+'</td><td data-label="סעיף">'+safe(item.section)+'</td><td data-label="חשבון / תיאור">'+safe(item.account||'—')+'</td><td class="num" data-label="'+safe(DATA.dates.current)+'">'+fmt(item.current,item.unit)+'</td><td class="num" data-label="'+safe(DATA.dates.compare)+'">'+fmt(item.compare,item.unit)+'</td><td class="num '+economicChangeClass(item.page,findRow(item.rowId)||{},item.current,item.compare)+'" data-label="הפרש">'+fmt(item.v.diff,item.unit)+'</td><td class="num '+economicChangeClass(item.page,findRow(item.rowId)||{},item.current,item.compare)+'" data-label="שינוי %">'+pctChange(item.current,item.compare)+'</td><td data-label="סוג חריגה">'+item.labels.map(x=>'<span class="exc-type">'+safe(x)+'</span>').join('')+'</td><td data-label="הסבר">'+safe(item.reasons.join(' '))+'</td><td data-label="בדיקות מומלצות"><button type="button" class="exc-audit-btn" data-exc-audit-toggle="'+auditId+'">הצג בדיקות</button></td></tr><tr class="exc-audit-row" id="'+auditId+'" hidden><td colspan="10"><div class="exc-audit-box"><strong>בדיקות מומלצות</strong>'+checkHtml+'</div></td></tr>';
+    }).join('')+
+    '</tbody></table>';
+  host.onclick=event=>{
+    const btn=event.target.closest('[data-exc-audit-toggle]');
+    if(!btn) return;
+    event.stopPropagation();
+    const detail=document.getElementById(btn.dataset.excAuditToggle);
+    if(!detail) return;
+    const opening=detail.hidden;
+    detail.hidden=!opening;
+    btn.textContent=opening?'הסתר בדיקות':'הצג בדיקות';
+  };
+}
+function openExceptions(){
+  modalMode='exceptions';
+  setModalActionsVisible(false);
+  document.getElementById('modalTitle').textContent='מרכז חריגות';
+  document.getElementById('modalMeta').textContent='שינויים מהותיים, חשבונות שהופיעו/אופסו, סכומים עגולים או חוזרים וחשדות לסיווג';
+  document.getElementById('modalBody').innerHTML='<div class="exc-filter"><label for="excTextSearch">חיפוש</label><input id="excTextSearch" type="search" placeholder="סעיף / שם / מספר חשבון"><label for="excThreshold">סכום מינימלי</label><input id="excThreshold" type="number" min="0" step="1" value="50"><label for="excPctThreshold">אחוז שינוי מינימלי</label><input class="pct-input" id="excPctThreshold" type="number" min="0" step="0.1" value="0"><label for="excTypeFilter">סוג חריגה</label><select id="excTypeFilter"><option value="all">הכול</option><option value="material">שינוי מהותי</option><option value="new">חדש/הופיע</option><option value="gone">נעלם/אופס</option><option value="round">סכום עגול</option><option value="repeat">סכום חוזר</option><option value="class">חשד לסיווג</option><option value="reverse">יתרות הפוכות</option></select>'+utilityActionsHtml('exc')+'<span class="exc-count" id="excCount"></span></div><div id="excTableHost"></div>';
+  const refresh=()=>renderExceptionsList(document.getElementById('excThreshold').value,document.getElementById('excPctThreshold').value,document.getElementById('excTypeFilter').value,document.getElementById('excSort').value,document.getElementById('excTextSearch').value);
+  refresh();
+  document.getElementById('excTextSearch').addEventListener('input',refresh);
+  document.getElementById('excThreshold').addEventListener('input',refresh);
+  document.getElementById('excPctThreshold').addEventListener('input',refresh);
+  document.getElementById('excTypeFilter').addEventListener('change',refresh);
+  document.getElementById('excSort').addEventListener('change',refresh);
+  document.getElementById('excCopy').addEventListener('click',()=>copyUtilityTable('excTableHost'));
+  document.getElementById('excExport').addEventListener('click',()=>exportUtilityTable('excTableHost','מרכז_חריגות'));
+  document.getElementById('modalBackdrop').classList.add('open');
+}
+function normalizedIssues(){ const d=DATA.diagnostics||{}; const issues=Array.isArray(d.issues)?d.issues:[]; return issues.map((item,idx)=>({severity:item.severity||'warning',type:item.type||'general',page:item.page||'',code:item.code||'',message:item.message||('בעיה '+(idx+1))})); }
+function openErrors(){ modalMode='errors'; setModalActionsVisible(false); document.getElementById('modalTitle').textContent='שגיאות ובעיות קליטה'; const issues=normalizedIssues(); document.getElementById('modalMeta').textContent=issues.length?issues.length+' בעיות שהמערכת לא הצליחה להשלים באופן מלא':'לא דווחו בעיות עיבוד'; document.getElementById('modalBody').innerHTML=!issues.length?'<div class="info-card"><h3>לא נמצאו שגיאות</h3><p>ה־JSON לא דיווח על פעולות שנכשלו או נתונים שלא שובצו.</p></div>':'<div class="issues-list">'+issues.map(issue=>'<div class="issue-item '+safe(issue.severity)+'"><div class="issue-title">'+safe(issue.type)+'</div><div class="issue-meta">'+safe([issue.page,issue.code].filter(Boolean).join(' | '))+'</div><div class="issue-msg">'+safe(issue.message)+'</div></div>').join('')+'</div>'; document.getElementById('modalBackdrop').classList.add('open'); }
+
+function openInsights(){ modalMode='insights'; setModalActionsVisible(false); document.getElementById('modalTitle').textContent='תובנות AI'; document.getElementById('modalMeta').textContent='נותחו בעת הפקת הדוח'; const insights=DATA.aiInsights || []; document.getElementById('modalBody').innerHTML = insights.length ? '<div class="insight-list">' + insights.map(text => '<div class="insight-item">' + safe(text) + '</div>').join('') + '</div>' : '<div class="info-card"><h3>אין תובנות זמינות</h3><p>לא הופקו תובנות עבור מערך הנתונים הנוכחי.</p></div>'; document.getElementById('modalBackdrop').classList.add('open'); }
+function findRowByName(pageKey, name){ const page=DATA.pages[pageKey]; if(!page) return null; return (page.rows||[]).find(row => row.name && row.name.trim()===name) || null; }
+function economicLabel(baseLabel,value){ const n=Number(value)||0; if(baseLabel==='רווח גולמי') return n<0?'הפסד גולמי':'רווח גולמי'; if(baseLabel==='רווח תפעולי') return n<0?'הפסד תפעולי':'רווח תפעולי'; if(baseLabel==='רווח נקי') return n<0?'הפסד נקי':'רווח נקי'; return baseLabel; }
+function barsHtml(label, cur, cmp, unit, profitKey){ const max=Math.max(Math.abs(cur),Math.abs(cmp),1); const maxH=120; const curH=Math.max(4,Math.round(Math.abs(cur)/max*maxH)); const cmpH=Math.max(4,Math.round(Math.abs(cmp)/max*maxH)); const curLabel=economicLabel(label,cur); const cmpLabel=economicLabel(label,cmp); const title=(curLabel===cmpLabel)?curLabel:(curLabel+' / '+cmpLabel); const attrs=profitKey?' data-profit-chart="'+safe(profitKey)+'" title="לחץ להסבר הגורמים לשינוי"':''; return '<div class="chart-card"'+attrs+'><h3>'+safe(title)+'</h3><div class="chart-cols"><div class="col-bar"><span class="bar-val">'+fmt(Math.abs(cur),unit)+'</span><div class="bar-fill cur" style="height:'+curH+'px"></div><span class="bar-label">'+safe(DATA.dates.current)+'<br>'+safe(curLabel)+'</span></div><div class="col-bar"><span class="bar-val">'+fmt(Math.abs(cmp),unit)+'</span><div class="bar-fill cmp" style="height:'+cmpH+'px"></div><span class="bar-label">'+safe(DATA.dates.compare)+'<br>'+safe(cmpLabel)+'</span></div></div></div>'; }
+
+
+function chartRowValue(row){ if(!row) return {current:0,compare:0}; const page=DATA.pages.balance||{rows:[]}; const map=byId(page); return (row.children&&row.children.length)?sumRow(row,map):{current:Number(row.current)||0,compare:Number(row.compare)||0}; }
+function findBalanceRow(ids,names,requireChildren){ const page=DATA.pages.balance||{rows:[]}; const rows=page.rows||[]; const map=byId(page); for(const id of (ids||[])){ if(map[id] && (!requireChildren || (map[id].children&&map[id].children.length))) return map[id]; } const norm=s=>String(s||'').replace(/\s+/g,' ').trim(); for(const wanted of (names||[])){ const w=norm(wanted); const exact=rows.find(r=>norm(r.name)===w && (!requireChildren || (r.children&&r.children.length))); if(exact) return exact; } for(const wanted of (names||[])){ const w=norm(wanted); const fuzzy=rows.find(r=>norm(r.name).includes(w) && !norm(r.name).includes('סה"כ') && (!requireChildren || (r.children&&r.children.length))); if(fuzzy) return fuzzy; } return null; }
+function balanceValueFlexible(ids,names){ const row=findBalanceRow(ids,names,false); if(!row) return 0; return chartRowValue(row).current; }
+function balanceChildItemsFlexible(ids,names){ const page=DATA.pages.balance||{rows:[]}; const map=byId(page); const parent=findBalanceRow(ids,names,true); if(!parent) return []; return (parent.children||[]).map(id=>map[id]).filter(Boolean).map(row=>({name:row.name,value:Math.abs(chartRowValue(row).current)})).filter(x=>x.value>0); }
+function donutHtml(title,items,centerText,emptyText){ if(!items||!items.length) return '<div class="chart-card"><h3>'+safe(title)+'</h3><div class="donut-empty">'+safe(emptyText||'לא נמצאו נתונים')+'</div></div>'; const total=items.reduce((a,x)=>a+x.value,0); if(total<=0) return '<div class="chart-card"><h3>'+safe(title)+'</h3><div class="donut-empty">'+safe(emptyText||'לא נמצאו נתונים')+'</div></div>'; const palette=['#d9aa3f','#6ba7dd','#7bdc54','#e16b86','#9f86ff','#f08a5d','#57c7c7','#caa24b']; let acc=0; const stops=items.map((x,i)=>{ const start=acc; const end=acc+(x.value/total*100); acc=end; return palette[i%palette.length]+' '+start.toFixed(2)+'% '+end.toFixed(2)+'%'; }).join(','); const legend=items.map((x,i)=>'<div class="donut-legend-row"><span class="donut-dot" style="background:'+palette[i%palette.length]+'"></span><span class="donut-name">'+safe(x.name)+'</span><span class="donut-val">'+fmt(x.value)+'</span></div>').join(''); return '<div class="chart-card"><h3>'+safe(title)+'</h3><div class="donut-wrap"><div class="donut-chart" style="background:conic-gradient('+stops+')"><div class="donut-center">'+safe(centerText||fmt(total))+'</div></div><div class="donut-legend">'+legend+'</div></div></div>'; }
+function currentAssetsDonut(){ const items=balanceChildItemsFlexible(['balance_macro_ca'],['נכסים שוטפים']); return donutHtml('הרכב נכסים שוטפים',items,'סה״כ '+fmt(items.reduce((a,x)=>a+x.value,0))); }
+function currentLiabilitiesDonut(){ const items=balanceChildItemsFlexible(['balance_macro_cl'],['התחייבויות שוטפות']); return donutHtml('הרכב התחייבויות שוטפות',items,'סה״כ '+fmt(items.reduce((a,x)=>a+x.value,0))); }
+function negativeFinancingHtml(assets,liabilities,equity){ const max=Math.max(Math.abs(liabilities),Math.abs(equity),1); const width=v=>Math.max(2,Math.abs(v)/max*48); const bar=(name,value)=>{ const neg=value<0,w=width(value),left=neg?(50-w):50; return '<div class="negative-financing-row"><span>'+safe(name)+'</span><div class="negative-financing-track"><span class="negative-financing-zero"></span><span class="negative-financing-fill '+(neg?'negative':'')+'" style="left:'+left+'%;width:'+w+'%"></span></div><b class="num">'+fmt(value)+'</b></div>'; }; return '<div class="chart-card"><h3>מבנה המימון של החברה</h3><div class="negative-financing-bars">'+bar('התחייבויות',liabilities)+bar('הון',equity)+'</div><div class="market-hint">הון שלילי מוצג מתחת לציר האפס | סה״כ נכסים '+fmt(assets)+'</div></div>'; }
+function financingDonut(){ 
+  let assets=Math.abs(balanceValueFlexible(['balance_total_assets'],['סה"כ נכסים','סך נכסים']));
+  const ca=Math.abs(balanceValueFlexible(['balance_macro_ca','balance_total_ca'],['נכסים שוטפים','סה"כ נכסים שוטפים']));
+  const nca=Math.abs(balanceValueFlexible(['balance_macro_nca','balance_total_nca'],['נכסים לא שוטפים','סה"כ נכסים לא שוטפים']));
+  if(!assets && (ca||nca)) assets=ca+nca;
+
+  let liabilities=Math.abs(balanceValueFlexible(['balance_total_liabilities'],['סה"כ התחייבויות','סך התחייבויות']));
+  const cl=Math.abs(balanceValueFlexible(['balance_macro_cl','balance_total_cl'],['התחייבויות שוטפות','סה"כ התחייבויות שוטפות']));
+  const ncl=Math.abs(balanceValueFlexible(['balance_macro_ncl','balance_total_ncl'],['התחייבויות לא שוטפות','סה"כ התחייבויות לא שוטפות']));
+  if(!liabilities && (cl||ncl)) liabilities=cl+ncl;
+
+  let equityRaw=balanceValueFlexible(['balance_total_equity'],['סה"כ הון','סך הון','הון עצמי','הון']);
+  if(!equityRaw && assets && liabilities) equityRaw=assets-liabilities;
+  if(!assets && liabilities && equityRaw) assets=liabilities+equityRaw;
+
+  if(!assets || !liabilities || equityRaw===0) return donutHtml('מבנה המימון של החברה',[],'','לא ניתן לחשב באופן אמין — חסר נתון נכסים, התחייבויות או הון');
+  if(equityRaw<0) return negativeFinancingHtml(assets,liabilities,equityRaw);
+
+  const equity=Math.abs(equityRaw);
+  const items=[{name:'התחייבויות',value:liabilities},{name:'הון',value:equity}].filter(x=>x.value>0);
+  return donutHtml('מבנה המימון של החברה',items,'סה״כ נכסים '+fmt(assets));
+}
+function revenueChartRow(){ 
+  const pnl=DATA.pages.pnl||{rows:[]}; const rows=pnl.rows||[]; const map=byId(pnl);
+  const fixed=rows.find(r=>r.id==='pnl_metric_sales'); if(fixed){ const v=(fixed.children&&fixed.children.length)?sumRow(fixed,map):{current:Number(fixed.current)||0,compare:Number(fixed.compare)||0}; return {current:Math.abs(v.current),compare:Math.abs(v.compare),unit:unitOf(fixed.unit)}; }
+  const exactNames=['סה"כ מכירות','סה״כ מכירות','סה"כ הכנסות','סה״כ הכנסות','הכנסות','מכירות'];
+  for(const name of exactNames){ const row=rows.find(r=>String(r.name||'').trim()===name); if(row){ const v=(row.children&&row.children.length)?sumRow(row,map):{current:Number(row.current)||0,compare:Number(row.compare)||0}; return {current:Math.abs(v.current),compare:Math.abs(v.compare),unit:unitOf(row.unit)}; } }
+  const tRows=rows.filter(r=>/^T(?:\d+)?$/i.test(String(r.code||'')) || /^pnl_T(?:\d+)?$/i.test(String(r.id||'')));
+  if(tRows.length){ const current=tRows.reduce((a,r)=>a+Math.abs(Number(r.current)||0),0); const compare=tRows.reduce((a,r)=>a+Math.abs(Number(r.compare)||0),0); return {current,compare,unit:unitOf((tRows[0]||{}).unit)}; }
+  return null;
+}
+function normalizedProfitChartRow(ratioId,pnlId){ const ratios=((DATA.pages.ratios||{}).rows||[]); const ratio=ratios.find(r=>r.id===ratioId); if(ratio) return {current:Number(ratio.current)||0,compare:Number(ratio.compare)||0,unit:unitOf(ratio.unit)}; const pnl=DATA.pages.pnl||{rows:[]}; const row=(pnl.rows||[]).find(r=>r.id===pnlId); if(!row) return null; const revCurrentSign=pnlRevenueSign('current'),revCompareSign=pnlRevenueSign('compare'); return {current:revCurrentSign*(Number(row.current)||0),compare:revCompareSign*(Number(row.compare)||0),unit:unitOf(row.unit)}; }
+function pnlProfitMultiplier(){ return pnlRevenueSign('current')>0?1:-1; }
+function profitDriverRows(kind){ const milestone=kind==='gross'?'r236':kind==='operating'?'r270':'r289'; const pnl=DATA.pages.pnl||{rows:[]}; const mult=pnlProfitMultiplier(); const out=[]; (pnl.rows||[]).forEach(item=>{ if(item.children&&item.children.length) return; if(!pnlItemMilestones(item.id).includes(milestone)) return; const code=String(item.code||item.id.replace(/^pnl_/,'')).toUpperCase(); const name=String(item.name||''); const isRevenue=/^T/.test(code)||(/הכנס/.test(name)&&!/הוצא/.test(name)); const isExpense=/^(U|V|W|VD)/.test(code)||/עלות|הוצא|מסים על ההכנסה/.test(name); const drill=DATA.drilldownData[item.id]||[]; drill.forEach(row=>{ const current=Number(row.current)||0; const compare=Number(row.compare)||0; let impact; if(isRevenue){ impact=Math.abs(current)-Math.abs(compare); } else if(isExpense){ impact=-(Math.abs(current)-Math.abs(compare)); } else { impact=mult*(current-compare); } if(Math.abs(impact)<0.005) return; out.push({impact,parent:item.name||item.code||item.id,desc:row.desc||row.account||row.code||'',account:row.account||'',entity:row.entity||row.company||''}); }); }); out.sort((a,b)=>Math.abs(b.impact)-Math.abs(a.impact)); return out.slice(0,5); }
+function openProfitDrivers(kind){ modalMode='chartDrivers'; setModalActionsVisible(false); const titles={gross:'רווח גולמי',operating:'רווח תפעולי',net:'רווח נקי'}; const items=profitDriverRows(kind); document.getElementById('modalTitle').textContent='מה גרם לשינוי ב'+titles[kind]; document.getElementById('modalMeta').textContent='החשבונות הספציפיים בעלי ההשפעה הגדולה ביותר מתוך ה־Drill-down'; const body=!items.length?'<div class="info-card"><h3>אין פירוט מספיק</h3><p>לא נמצאו חשבונות Drill-down של רווח והפסד שמאפשרים להסביר את השינוי.</p></div>':'<div class="profit-driver-list">'+items.map(x=>'<div class="profit-driver"><div class="driver-head"><span class="driver-name">'+safe((x.account?x.account+' — ':'')+x.desc)+'</span><span class="driver-value '+cls(x.impact)+'">'+(x.impact>0?'שיפור ':'פגיעה ')+fmt(Math.abs(x.impact))+'</span></div><div class="driver-meta">'+safe([x.parent,x.entity].filter(Boolean).join(' | '))+'</div></div>').join('')+'</div>'; document.getElementById('modalBody').innerHTML='<button type="button" class="chart-back" id="backToCharts">← חזרה לגרפים</button>'+body; document.getElementById('modalBackdrop').classList.add('open'); }
+function openCharts(){ modalMode='charts'; setModalActionsVisible(false); document.getElementById('modalTitle').textContent='גרפים - הכנסות ורווחיות'; document.getElementById('modalMeta').textContent='תקופה נוכחית מול תקופה השוואתית | לחץ על גרף רווח להסבר השינוי'; const revenue=revenueChartRow(); const gross=normalizedProfitChartRow('ratios_R01','pnl_r236'); const oper=normalizedProfitChartRow('ratios_R06','pnl_r270'); const net=normalizedProfitChartRow('ratios_R07','pnl_r289'); const metrics=[['הכנסות',revenue,''],['רווח גולמי',gross,'gross'],['רווח תפעולי',oper,'operating'],['רווח נקי',net,'net']]; document.getElementById('modalBody').innerHTML='<div class="chart-grid">'+metrics.map(([label,row,key])=>row?barsHtml(label,Number(row.current)||0,Number(row.compare)||0,unitOf(row.unit),key):'<div class="chart-card"><h3>'+safe(label)+'</h3><p class="hint">לא נמצאו נתונים</p></div>').join('')+currentAssetsDonut()+currentLiabilitiesDonut()+financingDonut()+'</div>'; document.getElementById('modalBackdrop').classList.add('open'); }
+function showToast(msg){ const toast=document.getElementById('toast'); toast.textContent=msg; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'),2600); }
+async function copyText(text){ try{ await navigator.clipboard.writeText(text); showToast('הנתונים הועתקו ללוח'); } catch(e){ const fallback=document.getElementById('copyFallback'); fallback.value=text; fallback.style.display='block'; fallback.select(); showToast('הדפדפן חסם העתקה ישירה. הטקסט סומן להעתקה ידנית'); } }
+function tsv(rows,title){ const headers=['תיאור חשבון','קוד חשבון',DATA.dates.current,DATA.dates.compare,'הפרש','שינוי %','מטבע']; const total=totals(rows); const lines=[title, headers.join('\t')]; rows.forEach(row => lines.push([row.desc,row.account||row.code,row.current,row.compare,row.diff,pctChange(row.current,row.compare),row.currency].join('\t'))); lines.push(['סה״כ','',total.current,total.compare,total.diff,pctChange(total.current,total.compare),defaultDisplayUnit()].join('\t')); return lines.join('\n'); }
+function exportToExcel(id,rowsOverride){ const rows=Array.isArray(rowsOverride)?rowsOverride:calcRows(id); const base=findRow(id); if(!rows.length){ showToast('הייצוא נכשל — לא נמצאו נתונים'); return; } const safeName=String((base&&base.name)||id).replace(/[\\/:*?"<>|\s]+/g,'_'); let table='<html dir="rtl"><head><meta charset="utf-8"></head><body><table border="1"><thead><tr><th>תיאור חשבון</th><th>קוד חשבון</th><th>'+DATA.dates.current+'</th><th>'+DATA.dates.compare+'</th><th>הפרש</th><th>שינוי %</th><th>מטבע</th></tr></thead><tbody>'; rows.forEach(row=>{ table+='<tr><td>'+safe(row.desc)+'</td><td>'+safe(row.account||row.code)+'</td><td>'+row.current+'</td><td>'+row.compare+'</td><td>'+row.diff+'</td><td>'+pctChange(row.current,row.compare)+'</td><td>'+safe(unitOf(row.currency))+'</td></tr>'; }); const total=totals(rows); table+='<tr><td>סה״כ</td><td></td><td>'+total.current+'</td><td>'+total.compare+'</td><td>'+total.diff+'</td><td>'+pctChange(total.current,total.compare)+'</td><td>'+safe(defaultDisplayUnit())+'</td></tr></tbody></table></body></html>'; const filename='פירוט_'+safeName+'_'+new Date().getFullYear()+'.xls'; const blob=new Blob(['\ufeff'+table],{type:'application/vnd.ms-excel;charset=utf-8'}); try{ if(navigator.msSaveOrOpenBlob){ navigator.msSaveOrOpenBlob(blob,filename); showToast('הקובץ נוצר להורדה'); return; } const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=filename; a.style.display='none'; document.body.appendChild(a); a.click(); setTimeout(()=>{ a.remove(); URL.revokeObjectURL(url); },1500); showToast('ניסיון הורדה בוצע. אם סביבת הרשת חסמה אותו, השתמש בהעתקה לאקסל שמופיעה בחלון.'); const fallback=document.getElementById('copyFallback'); if(fallback){ fallback.value=tsv(rows,base?base.name:''); fallback.style.display='block'; fallback.setAttribute('aria-label','נתונים להעתקה לאקסל במקרה שההורדה נחסמה'); } } catch(e){ const fallback=document.getElementById('copyFallback'); if(fallback){ fallback.value=tsv(rows,base?base.name:''); fallback.style.display='block'; fallback.select(); } showToast('הדפדפן חסם הורדה. הנתונים הוכנו להעתקה ישירה לאקסל.'); } }
+function copyMain(){ const map=byId(DATA.pages[activePage]); const rows=visibleRows(activePage).map(item => item.row); const headers=['סעיף','קוד',DATA.dates.current,DATA.dates.compare,'הפרש','שינוי %','מטבע']; const lines=[headers.join('\t')]; rows.forEach(row => { const hasChildren = row.children && row.children.length; const vals = hasChildren ? sumRow(row, map) : {current: Number(row.current)||0, compare: Number(row.compare)||0}; const v=variance(vals); lines.push([row.name,row.code||'',vals.current,vals.compare,v.diff,pctChange(vals.current,vals.compare),unitOf(row.unit)].join('\t')); }); copyText(lines.join('\n')); }
+function globalSearchItems(q){ return comprehensiveSearchItems(q); }
+function applyFilter(){ const input=document.getElementById('filterInput'); const q=input.value.trim(); const panel=document.getElementById('globalSearchResults'); document.querySelectorAll('.main-table tbody tr').forEach(tr=>tr.style.display=''); if(!q){ panel.classList.remove('open'); panel.innerHTML=''; return; } const items=globalSearchItems(q); const aggregateOption=items.length>1?'<button type="button" class="search-result" data-aggregate-query="'+safe(q)+'"><div class="search-result-title">הצג את כל התוצאות במרוכז</div><div class="search-result-meta">'+items.length+' תוצאות של "'+safe(q)+'" בכל הדוח</div></button>':''; const normalResults=items.length?items.map((item,i)=>'<button type="button" class="search-result" data-search-index="'+i+'"><div class="search-result-title">'+safe(item.title)+'</div><div class="search-result-meta">'+safe(item.meta)+'</div></button>').join(''):'<div class="search-empty">לא נמצאו תוצאות בכל הדוח</div>'; panel.innerHTML=aggregateOption+normalResults; panel._items=items; panel.classList.add('open'); }
+function setPage(page,preserveSearch){ activePage=page; document.querySelectorAll('.nav button').forEach(btn => btn.classList.toggle('active',btn.dataset.page===page)); document.querySelectorAll('.page').forEach(section => section.classList.toggle('active',section.id===page)); const pageTitle=(DATA.pages[page] && DATA.pages[page].title) || 'דשבורד'; const companyName=String((DATA.meta&&DATA.meta.companyName)||'').trim(); document.getElementById('viewTitle').textContent = companyName ? (pageTitle + ' — ' + companyName) : pageTitle; document.getElementById('pageHint').textContent = (DATA.pages[page] && DATA.pages[page].hint) || ''; if(!preserveSearch) document.getElementById('filterInput').value=''; applyFilter(); }
+function applyMeta(){ const meta = DATA.meta || {}; const company = (meta.companyName || '').trim(); const subtitle = (meta.subtitle || '').trim(); document.title = company ? (company + ' - לוח מחוונים פיננסי') : 'לוח מחוונים פיננסי'; const initialTitle=document.getElementById('viewTitle'); if(initialTitle){ const pageTitle=(DATA.pages.balance&&DATA.pages.balance.title)||initialTitle.textContent||'מאזן'; initialTitle.textContent=company?(pageTitle+' — '+company):pageTitle; } const subEl = document.getElementById('subLine'); if(subEl){ subEl.textContent = subtitle || (company ? (company + ' | נתונים מתוך הקבצים שסופקו') : 'לוח מחוונים פיננסי | נתונים מתוך הקבצים שסופקו'); } const curBtn = document.getElementById('dateCurrentBtn'); if(curBtn){ curBtn.textContent = '📅 ' + ((DATA.dates && DATA.dates.current) || 'תקופה נוכחית'); } const cmpBtn = document.getElementById('dateCompareBtn'); if(cmpBtn){ cmpBtn.textContent = 'השוואה: ' + ((DATA.dates && DATA.dates.compare) || 'תקופה קודמת'); } }
+const ASK_AI_QUESTIONS=[["📊 להבין את החברה", ["תן לי תמונת מצב של החברה: מה תחום הפעילות שלה, מה קרה בתחום בתקופה הנוכחית לעומת הקודמת, ואיך זה משתקף בנתונים הפיננסיים?", "מהם 5 הדברים החשובים ביותר שאני צריך לדעת על החברה מהנתונים?"]], ["🔍 למצוא את מה שלא רואים מיד", ["מה הכי מפתיע או לא צפוי בנתונים?", "מצא משהו משמעותי שסביר שלא הייתי שם לב אליו בעצמי.", "אילו נתונים או חשבונות לא מתנהגים כפי שהיית מצפה, ולמה?"]], ["🧠 לחבר בין הנתונים", ["מצא קשרים בין נתונים שבנפרד נראים תקינים, אבל ביחד מעלים סימן שאלה.", "איזה KPI נראה טוב או תקין לכאורה, אבל הנתונים שמתחתיו מספרים סיפור אחר?", "אנליטי - סגירת מעגל בין המאזן לרווח והפסד"]], ["🎯 לחשוב כמו מבקר", ["אילו 3 שאלות היית שואל את הנהלת החברה לאחר ניתוח כלל הנתונים?", "אם קיימת בעיה פיננסית שלא בולטת במבט ראשון — איפה היית מחפש אותה, ואילו נתונים גורמים לך להתמקד דווקא שם?"] ]];
+const ASK_AI_PROMPT_OVERRIDES={
+  "אנליטי - סגירת מעגל בין המאזן לרווח והפסד":`נתח סגירת מעגל בין המאזן לרווח והפסד מול התקופה הקודמת ב־6 הקשרים הבאים:
+
+לקוחות↔הכנסות · מלאי↔עלות המכר · ספקים↔קניות/עלות המכר · רכוש קבוע ברוטו↔פחת · הלוואות↔מימון · מס↔רווח לפני מס ·
+
+**חשוב לגבי סימנים:** אל תפרש מינוס אוטומטית כהפסד או כירידה. זהה את מוסכמת הסימנים לפי מהות הסעיפים והדוחות; הכנסות ורווחים עשויים להופיע במינוס עקב קונבנציית חובה/זכות. בניתוח השינוי התייחס למשמעות הכלכלית של הסעיף ולא לסימן בלבד.
+
+בצע ברקע את החישובים והיחסים הרלוונטיים בכל קשר, אך בתשובה התמקד בתובנה ולא בחישוב. הצג רק 1–2 מספרים מהותיים כאשר הם עוזרים להבין את המסקנה. אל תציג פירוט חישובים.
+
+לכל קשר כתוב:
+
+**מה קרה:** משפט קצר המשווה בין השינויים בשני הסעיפים, כולל יחס מהותי אם רלוונטי.
+
+**המשמעות:** התחל בתווית [ללא חריגה / חריגה בינונית / חריגה מהותית / לא ניתן לבדוק], ולאחריה הסבר קצר מה השינוי עשוי להעיד והאם הקשר נראה הגיוני כלכלית.
+
+**לבדיקה:** שאלה אחת ממוקדת שכדאי לבדוק; אם אין נקודה מהותית כתוב "—".
+
+לסיווג השתמש בשינוי ביחס הרלוונטי בין התקופות:
+
+עד 10% = ללא חריגה · 10%-25% = חריגה בינונית · מעל 25% = חריגה מהותית · נתון חסר = לא ניתן לבדוק.
+
+חשב לפי היחס המתאים: ימי לקוחות, ימי מלאי, ימי ספקים, פחת ביחס לרכוש קבוע ברוטו, ריבית ביחס להלוואות ומס ביחס לרווח לפני מס. השתמש בממוצע יתרות כשניתן ובאותה שיטת חישוב בשתי התקופות. בספקים השתמש בקניות אם קיימות, אחרת בעלות המכר כקירוב.
+
+דוגמה לסגנון:
+
+**1. לקוחות מול הכנסות**
+
+**מה קרה:** ההכנסות עלו בכ־8%, בעוד הלקוחות עלו בכ־24% וימי הלקוחות התארכו.
+
+**המשמעות:** [חריגה מהותית] הלקוחות גדלו מהר יותר מהפעילות, דבר שעשוי להצביע על האטה בגבייה או שינוי בתנאי האשראי.
+
+**לבדיקה:** האם חל שינוי בתנאי האשראי או שקיימות יתרות מהותיות שטרם נגבו?
+
+אל תשלים נתונים חסרים, אל תמציא סיבות שאינן מוכחות, ואל תניח ששני סעיפים קשורים חייבים לנוע באותו כיוון.
+
+הצג את כל 6 הקשרים, ממוספרים. בלי הקדמה ובלי סיכום.`
+};
+function openAskAI(){ modalMode='askAI'; setModalActionsVisible(false); document.getElementById('modalTitle').textContent='✨ Ask AI'; document.getElementById('modalMeta').textContent='בחר שאלה, העתק והדבק ב-Copilot'; document.getElementById('modalBody').innerHTML='<div class="ask-ai-groups">'+ASK_AI_QUESTIONS.map(g=>'<section class="ask-ai-group"><h3>'+safe(g[0])+'</h3>'+g[1].map(q=>'<div class="ask-ai-question"><span>'+safe(q)+'</span><button type="button" class="ask-ai-copy" data-ask-ai-copy="'+safe(q)+'">העתק</button></div>').join('')+'</section>').join('')+'</div>'; document.getElementById('modalBackdrop').classList.add('open'); }
+function copyAskAIQuestion(text){ copyText(ASK_AI_PROMPT_OVERRIDES[text]||text); }
+
+document.addEventListener('DOMContentLoaded', () => { applyMeta(); renderHealth(); renderPages(); renderKpis(); document.getElementById('healthBox').addEventListener('click', event => { if(event.target.closest('#openHealthDetails')) openHealthDetails(); }); document.getElementById('kpiArea').addEventListener('click', event => { const card=event.target.closest('[data-kpi-id]'); if(card) openKpiDetail(card.dataset.kpiId); }); document.getElementById('kpiArea').addEventListener('keydown', event => { if(event.key!=='Enter' && event.key!==' ') return; const card=event.target.closest('[data-kpi-id]'); if(card){ event.preventDefault(); openKpiDetail(card.dataset.kpiId); } }); document.querySelectorAll('.nav button').forEach(btn => btn.addEventListener('click', () => setPage(btn.dataset.page))); document.getElementById('pagesHost').addEventListener('click', event => { const row=event.target.closest('[data-row-id]'); if(row) toggleOrOpen(row.dataset.rowId); }); document.getElementById('filterInput').addEventListener('input', applyFilter); document.getElementById('globalSearchResults').addEventListener('click', event => { const aggregate=event.target.closest('[data-aggregate-query]'); if(aggregate){ document.getElementById('globalSearchResults').classList.remove('open'); openAggregatedSearch(aggregate.dataset.aggregateQuery); return; } const btn=event.target.closest('[data-search-index]'); if(!btn) return; const panel=document.getElementById('globalSearchResults'); const item=(panel._items||[])[Number(btn.dataset.searchIndex)]; if(!item) return; panel.classList.remove('open'); if(item.kind==='drill'){ setPage(item.page,true); openDrilldown(item.rowId); } else { setPage(item.page,true); const row=findRow(item.rowId); if(row && row.children && row.children.length){ expanded[item.page].add(item.rowId); renderTable(item.page); } else if((DATA.drilldownData[item.rowId]||[]).length){ openDrilldown(item.rowId); } } }); document.addEventListener('click', event => { if(!event.target.closest('.global-search')) document.getElementById('globalSearchResults').classList.remove('open'); }); document.getElementById('copyVisibleMain').addEventListener('click', copyMain); document.getElementById('copyModalData').addEventListener('click', () => { const rows=currentDrillViewRows.slice(); const base=findRow(activeSectionId); rows.length ? copyText(tsv(rows, base ? base.name : '')) : showToast('אין נתונים להעתקה'); }); document.getElementById('exportModalData').addEventListener('click', () => exportToExcel(activeSectionId,currentDrillViewRows.slice())); document.getElementById('copyWholeSection').addEventListener('click', copyWholeSectionData); document.getElementById('exportWholeSection').addEventListener('click', exportWholeSectionToExcel); document.getElementById('closeModal').addEventListener('click', closeModal); document.getElementById('modalBackdrop').addEventListener('click', event => { if(event.target.id === 'modalBackdrop') closeModal(); }); document.getElementById('openExceptions').addEventListener('click', openExceptions); document.getElementById('openErrors').addEventListener('click', openErrors); document.getElementById('openFxChecks').addEventListener('click', openFxChecks); document.getElementById('openInsights').addEventListener('click', openInsights); document.getElementById('openCharts').addEventListener('click', openCharts); document.getElementById('printDashboard').addEventListener('click', () => window.print()); document.getElementById('openExecReview').addEventListener('click', openExecReview); document.getElementById('openUnchanged').addEventListener('click', openUnchanged); document.getElementById('materialityInput').addEventListener('input', event => { materialityThreshold = Number(event.target.value) || 0; renderPages(); setPage(activePage); }); document.getElementById('pagesHost').addEventListener('input', event => { if(event.target.id==='marketValueInput') updateMarketRatios(); }); document.getElementById('modalBody').addEventListener('input', event => { if(event.target.id === 'auditNoteInput'){ const rid=event.target.dataset.rowId; const val=event.target.value; if(val.trim()){ auditNotes[rid]=val; } else { delete auditNotes[rid]; } persistAuditNotes(); return; } const drillKey=event.target.dataset&&event.target.dataset.drillNoteInput; if(drillKey){ const val=event.target.value; if(val.trim()){ auditNotes[drillKey]=val; } else { delete auditNotes[drillKey]; } persistAuditNotes(); const btn=document.querySelector('[data-drill-note-key="'+CSS.escape(drillKey)+'"]'); if(btn) btn.classList.toggle('has-note',!!val.trim()); } }); document.getElementById('modalBody').addEventListener('change', event => { if(event.target.id === 'auditNoteInput'){ persistAuditNotes(); renderPages(); setPage(activePage); } }); window.addEventListener('pagehide', persistAuditNotes); window.addEventListener('beforeunload', persistAuditNotes); document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') persistAuditNotes(); }); document.getElementById('openAskAI').addEventListener('click',openAskAI); document.getElementById('modalBody').addEventListener('click',event=>{ const btn=event.target.closest('[data-ask-ai-copy]'); if(btn) copyAskAIQuestion(btn.getAttribute('data-ask-ai-copy')||''); }); document.getElementById('openAdditionalEntriesCenter').addEventListener('click', openAdditionalEntriesCenter); document.getElementById('openNotesCenter').addEventListener('click', openNotesCenter); document.getElementById('openEvidenceCenter').addEventListener('click', openEvidenceCenter); document.getElementById('saveDashboardWithNotes').addEventListener('click', saveDashboardWithNotes); document.getElementById('exportNotes').addEventListener('click', () => { const items=notesCenterItems(); if(!items.length){ showToast('אין הערות לייצוא'); return; } const lines=['סעיף\tשורת Drill-down\tחשבון/קוד\tהערת ביקורת']; items.forEach(item=>{ const drill=item.isDrill&&item.drillRow?(item.drillRow.desc||''):''; const code=item.isDrill&&item.drillRow?(item.drillRow.account||item.drillRow.code||''):((item.row&&item.row.code)||''); lines.push([item.row?item.row.name:item.id,drill,code,String(item.text||'').replace(/\n/g,' ')].join('\t')); }); copyText(lines.join('\n')); }); document.getElementById('modalBody').addEventListener('change',event=>{ const cb=event.target.closest('[data-manual-evidence-doc][data-manual-evidence-target]'); if(cb){ toggleManualEvidenceAssignment(cb.dataset.manualEvidenceTarget,cb.dataset.manualEvidenceDoc,cb.checked); } }); document.getElementById('modalBody').addEventListener('click', event => { const externalRemove=event.target.closest('[data-remove-external-evidence]'); if(externalRemove){ removeExternalEvidence(externalRemove.dataset.removeExternalEvidence); return; } const externalAdd=event.target.closest('[data-external-evidence-add]'); if(externalAdd){ addExternalEvidenceForTarget(externalAdd.dataset.externalEvidenceAdd); return; } const evidenceLink=event.target.closest('a.open-evidence-doc'); if(evidenceLink){ return; } const pickerBtn=event.target.closest('[data-manual-evidence-picker]'); if(pickerBtn){ manualEvidencePickerKey=(manualEvidencePickerKey===pickerBtn.dataset.manualEvidencePicker?null:pickerBtn.dataset.manualEvidencePicker); refreshEvidenceViews(); return; } const evidenceBtn=event.target.closest('[data-evidence-target]'); if(evidenceBtn&&!event.target.closest('[data-evidence-manual]')){ const key=evidenceBtn.dataset.evidenceTarget; openEvidenceDetailKey=(openEvidenceDetailKey===key?null:key); refreshEvidenceViews(); return; } const manualBtn=event.target.closest('[data-evidence-manual]'); if(manualBtn){ applyManualEvidenceStatus(manualBtn.dataset.evidenceTarget,manualBtn.dataset.evidenceManual); return; } const noteBtn=event.target.closest('[data-drill-note-key]'); if(noteBtn){ const key=noteBtn.dataset.drillNoteKey; const editor=document.querySelector('[data-drill-note-editor="'+CSS.escape(key)+'"]'); if(editor){ const opening=editor.style.display==='none'; editor.style.display=opening?'table-row':'none'; if(opening){ const ta=editor.querySelector('textarea'); if(ta) ta.focus(); } } return; } const agg=event.target.closest('[data-aggregate-row-id]'); if(agg){ closeModal(); openDrilldown(agg.dataset.aggregateRowId); return; } if(modalMode==='charts'){ const card=event.target.closest('[data-profit-chart]'); if(card){ openProfitDrivers(card.dataset.profitChart); return; } } if(modalMode==='chartDrivers'&&event.target.id==='backToCharts'){ openCharts(); return; } if(!['exceptions','exec','unchanged'].includes(modalMode)) return; const row=event.target.closest('[data-row-id]'); if(row) openDrilldown(row.dataset.rowId); }); document.addEventListener('keydown', event => { if(event.key === 'Escape') closeModal(); }); console.assert(typeof exportToExcel === 'function','exportToExcel exists'); console.assert(document.getElementById('exportModalData'),'export button exists'); console.assert(Object.keys(DATA.drilldownData).some(key => DATA.drilldownData[key].length),'drilldown data exists'); console.assert(getComputedStyle(document.body).overflowX === 'hidden','no horizontal scroll'); });
+window.addEventListener('DOMContentLoaded',()=>{ if(!NOTES_STORAGE_AVAILABLE&&manualEntries.length) setTimeout(()=>showToast('הפקודות הידניות נשמרות זמנית בכרטיסייה זו. לשמירה קבועה השתמש בכפתור „שמור דשבורד עם הערות”.'),0); });
+
+
+(function(){
+  function pool(){ return document.getElementById('staticEvidenceLinkPool'); }
+
+  function returnDetachedLinks(){
+    const p=pool();
+    if(!p) return;
+    document.querySelectorAll('a.open-evidence-doc[data-static-evidence-file]').forEach(function(a){
+      if(!a.isConnected) p.appendChild(a);
+    });
+  }
+
+  let staticEvidenceKeysSeeded=false;
+  function seedStaticEvidenceKeys(){
+    if(staticEvidenceKeysSeeded) return;
+    const p=pool();
+    if(!p) return;
+    try{
+      const docs=(typeof evidenceDocuments==='function'?evidenceDocuments():[]);
+      const sourceDocs=docs.map(function(d,i){ return {d:d,i:i}; }).filter(function(x){ return !x.d.manualExternal; });
+      const links=Array.from(p.querySelectorAll('a.open-evidence-doc[data-static-evidence-file]'));
+      const files=[...new Set(sourceDocs.map(function(x){ return String((x.d&&(x.d.fileName||x.d.name))||''); }).filter(Boolean))];
+      files.forEach(function(file){
+        const sameDocs=sourceDocs.filter(function(x){ return String((x.d&&(x.d.fileName||x.d.name))||'')===file; });
+        const sameLinks=links.filter(function(a){ return (a.getAttribute('data-static-evidence-file')||'')===file; });
+        sameDocs.forEach(function(x,occurrence){
+          const a=sameLinks[occurrence];
+          if(a&&typeof evidenceDocumentKey==='function'&&!a.getAttribute('data-static-evidence-key')) a.setAttribute('data-static-evidence-key',evidenceDocumentKey(x.d,x.i));
+        });
+      });
+      staticEvidenceKeysSeeded=true;
+    }catch(e){}
+  }
+
+  function takeLink(key,file){
+    const p=pool();
+    if(!p) return null;
+    seedStaticEvidenceKeys();
+    const links=Array.from(p.querySelectorAll('a.open-evidence-doc[data-static-evidence-file]'));
+    try{
+      const docs=(typeof evidenceDocuments==='function'?evidenceDocuments():[]);
+      let doc=null,docIndex=-1;
+      if(key&&typeof evidenceDocumentKey==='function'){
+        docIndex=docs.findIndex(function(d,i){ return evidenceDocumentKey(d,i)===key; });
+        if(docIndex>=0) doc=docs[docIndex];
+      }
+      if(doc&&doc.manualExternal){
+        const href=String(doc.documentUrl||doc.fileUrl||doc.filePath||doc.relativePath||'').trim();
+        if(!href) return null;
+        const existing=links.find(function(a){ return (a.getAttribute('data-static-evidence-key')||'')===key; });
+        if(existing) return existing;
+        const template=links.length?links[0]:null;
+        const a=template?template.cloneNode(true):document.createElement('a');
+        a.classList.add('open-evidence-doc');
+        a.setAttribute('data-static-evidence-file',file);
+        a.setAttribute('data-static-evidence-key',key||'');
+        a.setAttribute('href',href);
+        a.setAttribute('target','_blank');
+        a.setAttribute('rel','noopener');
+        if(!String(a.textContent||'').trim()) a.textContent='פתח קובץ';
+        p.appendChild(a);
+        return a;
+      }
+      if(doc){
+        const keyed=links.find(function(a){ return (a.getAttribute('data-static-evidence-key')||'')===key; });
+        if(keyed) return keyed;
+        const sameDocs=docs.map(function(d,i){ return {d:d,i:i}; }).filter(function(x){ return !x.d.manualExternal&&String((x.d&&(x.d.fileName||x.d.name))||'')===file; });
+        const occurrence=sameDocs.findIndex(function(x){ return x.i===docIndex; });
+        const sameLinks=links.filter(function(a){ return (a.getAttribute('data-static-evidence-file')||'')===file&&!(a.getAttribute('data-static-evidence-key')||''); });
+        const candidate=(occurrence>=0&&sameLinks[occurrence])||sameLinks[0];
+        if(candidate){ candidate.setAttribute('data-static-evidence-key',key||''); return candidate; }
+      }
+      for(const a of links){
+        if((a.getAttribute('data-static-evidence-file')||'')===file) return a;
+      }
+      return null;
+    }catch(e){ return null; }
+  }
+
+  function hydrateStaticEvidenceLinks(){
+    const p=pool();
+    if(!p) return;
+    document.querySelectorAll('.evidence-static-link-slot[data-evidence-file]').forEach(function(slot){
+      if(slot.querySelector('a.open-evidence-doc')) return;
+      const file=slot.getAttribute('data-evidence-file')||'';
+      const key=slot.getAttribute('data-evidence-key')||'';
+      if(!file) return;
+      const a=takeLink(key,file);
+      if(a) slot.appendChild(a);
+    });
+  }
+
+  const observer=new MutationObserver(function(mutations){
+    const p=pool();
+    if(!p) return;
+
+    // If a previously displayed evidence row was removed by a re-render,
+    // reclaim its original preloaded anchors instead of losing them.
+    mutations.forEach(function(m){
+      m.removedNodes.forEach(function(node){
+        if(node.nodeType!==1) return;
+        const links=[];
+        if(node.matches&&node.matches('a.open-evidence-doc[data-static-evidence-file]')) links.push(node);
+        if(node.querySelectorAll) links.push(...node.querySelectorAll('a.open-evidence-doc[data-static-evidence-file]'));
+        links.forEach(function(a){
+          if(!a.isConnected) p.appendChild(a);
+        });
+      });
+    });
+
+    requestAnimationFrame(hydrateStaticEvidenceLinks);
+  });
+
+  window.addEventListener('DOMContentLoaded',function(){
+    const p=pool();
+    if(!p) return;
+    observer.observe(document.body,{childList:true,subtree:true});
+    hydrateStaticEvidenceLinks();
+  });
+})();
